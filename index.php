@@ -1,0 +1,400 @@
+<?php
+/**
+ * UFAA - Main Compliance Dashboard (Modular Hub)
+ * Features a gorgeous dark theme, interactive stats, drag-and-drop upload,
+ * live searching/filtering, and seamless AJAX status, letter received, and letter date toggles.
+ */
+
+require_once 'config.php';
+
+// Check if database is initialized by attempting connection
+$dbInitialized = true;
+$dbErrorMessage = '';
+$pdo = null;
+
+try {
+    $pdo = get_db_connection();
+    if (!$pdo) {
+        $dbInitialized = false;
+    } else {
+        // Double check if table exists
+        $tableCheck = $pdo->query("SHOW TABLES LIKE 'unclaimed_assets'");
+        if ($tableCheck->rowCount() == 0) {
+            $dbInitialized = false;
+        }
+    }
+} catch (Exception $e) {
+    $dbInitialized = false;
+    $dbErrorMessage = $e->getMessage();
+}
+
+// Stats initialization
+$totalAssets = 0;
+$totalUnclaimed = 0;
+$totalClaimed = 0;
+$totalLettersReceived = 0;
+
+// Pagination and Search Params
+$search = trim($_GET['search'] ?? '');
+$statusFilter = trim($_GET['status'] ?? '');
+$letterFilter = trim($_GET['letter'] ?? '');
+$page = max(1, intval($_GET['page'] ?? 1));
+$limit = 50; // Assets per page
+$offset = ($page - 1) * $limit;
+$assets = [];
+$totalPages = 1;
+
+if ($dbInitialized && $pdo) {
+    try {
+        // Retrieve global stats
+        $totalAssets = $pdo->query("SELECT COUNT(*) FROM `unclaimed_assets`")->fetchColumn();
+        $totalUnclaimed = $pdo->query("SELECT COUNT(*) FROM `unclaimed_assets` WHERE `status` = 'Unclaimed'")->fetchColumn();
+        $totalClaimed = $pdo->query("SELECT COUNT(*) FROM `unclaimed_assets` WHERE `status` = 'Claimed'")->fetchColumn();
+        $totalLettersReceived = $pdo->query("SELECT COUNT(*) FROM `unclaimed_assets` WHERE `letter_received` = 'Yes'")->fetchColumn();
+
+        // Build paginated query
+        $whereClauses = [];
+        $params = [];
+
+        if ($search !== '') {
+            $whereClauses[] = "(
+                `owner_name` LIKE :search OR 
+                `id_passport_no` LIKE :search OR 
+                `account_number` LIKE :search
+            )";
+            $params[':search'] = '%' . $search . '%';
+        }
+
+        if ($statusFilter !== '') {
+            $whereClauses[] = "`status` = :status";
+            $params[':status'] = $statusFilter;
+        }
+
+        if ($letterFilter !== '') {
+            $whereClauses[] = "`letter_received` = :letter_received";
+            $params[':letter_received'] = $letterFilter;
+        }
+
+        $whereSql = '';
+        if (!empty($whereClauses)) {
+            $whereSql = 'WHERE ' . implode(' AND ', $whereClauses);
+        }
+
+        // Count total matching records for pagination
+        $countQuery = $pdo->prepare("SELECT COUNT(*) FROM `unclaimed_assets` $whereSql");
+        $countQuery->execute($params);
+        $totalFiltered = $countQuery->fetchColumn();
+        $totalPages = ceil($totalFiltered / $limit);
+
+        // Fetch assets
+        $stmt = $pdo->prepare("
+            SELECT * FROM `unclaimed_assets` 
+            $whereSql 
+            ORDER BY `record_id` DESC 
+            LIMIT :limit OFFSET :offset
+        ");
+        
+        // Bind pagination params manually
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+        $assets = $stmt->fetchAll();
+
+    } catch (PDOException $e) {
+        $dbErrorMessage = "Query Error: " . $e->getMessage();
+    }
+}
+$activePage = 'home';
+require_once 'includes/layout.php';
+?>
+
+        <!-- Setup Database Modal Card if DB doesn't exist -->
+        <?php if (!$dbInitialized): ?>
+            <div class="setup-warning-card">
+                <h2><i class="fa-solid fa-triangle-exclamation"></i> Database Initialization Required</h2>
+                <p>
+                    The UFAA database (`ufaa_db`) or the `unclaimed_assets` table has not been initialized.
+                    Please run our self-healing setup script to configure your environment automatically.
+                </p>
+                <button onclick="runSetup()" class="btn-setup" id="setup-btn">
+                    <i class="fa-solid fa-gears"></i> Initialize Database System
+                </button>
+                <?php if ($dbErrorMessage !== ''): ?>
+                    <div style="margin-top: 15px; font-size: 0.8rem; color: var(--color-rose);">
+                        Error detail: <?= htmlspecialchars($dbErrorMessage) ?>
+                    </div>
+                <?php endif; ?>
+            </div>
+        <?php else: ?>
+
+            <!-- Dynamic Stat Counters -->
+            <div class="stats-grid">
+                
+                <div class="stat-card">
+                    <div class="stat-info">
+                        <h3>Total Financial Assets</h3>
+                        <div class="stat-number" id="stat-total"><?= number_format($totalAssets) ?></div>
+                    </div>
+                    <div class="stat-icon total">
+                        <i class="fa-solid fa-vault"></i>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-info">
+                        <h3>Unclaimed Assets</h3>
+                        <div class="stat-number" id="stat-unclaimed" style="color: var(--color-gold);"><?= number_format($totalUnclaimed) ?></div>
+                    </div>
+                    <div class="stat-icon unclaimed">
+                        <i class="fa-solid fa-hourglass-half"></i>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-info">
+                        <h3>Claimed Assets</h3>
+                        <div class="stat-number" id="stat-claimed" style="color: var(--color-emerald);"><?= number_format($totalClaimed) ?></div>
+                    </div>
+                    <div class="stat-icon claimed">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-info">
+                        <h3>Letters Received</h3>
+                        <div class="stat-number" id="stat-letters" style="color: #0ea5e9;"><?= number_format($totalLettersReceived) ?></div>
+                    </div>
+                    <div class="stat-icon letter-yes">
+                        <i class="fa-solid fa-envelope-open-text"></i>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Premium Animated Excel Drag-and-Drop Uploader -->
+            <div class="uploader-card" id="dropzone" onclick="document.getElementById('file-input').click()">
+                <div class="upload-icon-wrapper">
+                    <i class="fa-solid fa-file-excel"></i>
+                </div>
+                <h3>Drag & Drop Compliance Sheet</h3>
+                <p>or <span>browse files</span> from your computer</p>
+                
+                <input type="file" id="file-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)" style="display:none;">
+                
+                <div class="supported-types">Supported Formats: Excel (.xlsx · .xls) &amp; CSV (.csv)</div>
+
+                <!-- Progress Bar during AJAX upload -->
+                <div class="progress-container" id="upload-progress-container" onclick="event.stopPropagation()">
+                    <div class="progress-label">
+                        <span id="progress-status">Uploading compliance rows...</span>
+                        <span id="progress-percent">0%</span>
+                    </div>
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progress-bar-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Management & Table Card -->
+            <div class="data-management-card">
+                
+                <!-- Advanced Searching & Filtering controls -->
+                <form method="GET" action="index.php" class="filters-row">
+                    
+                    <div class="search-wrapper">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Search by Owner Name, ID/Passport No, Account No..." class="search-input">
+                    </div>
+
+                    <div class="filter-controls">
+                        <!-- Claim Status Filter -->
+                        <select name="status" class="select-filter">
+                            <option value="">-- All Claims --</option>
+                            <option value="Unclaimed" <?= $statusFilter === 'Unclaimed' ? 'selected' : '' ?>>Unclaimed Only</option>
+                            <option value="Claimed" <?= $statusFilter === 'Claimed' ? 'selected' : '' ?>>Claimed Only</option>
+                        </select>
+
+                        <!-- Letter Status Filter -->
+                        <select name="letter" class="select-filter">
+                            <option value="">-- All Letters --</option>
+                            <option value="Yes" <?= $letterFilter === 'Yes' ? 'selected' : '' ?>>Letter Received</option>
+                            <option value="No" <?= $letterFilter === 'No' ? 'selected' : '' ?>>No Letter Received</option>
+                        </select>
+
+                        <button type="submit" class="btn-filter">Filter</button>
+                        
+                        <?php if ($search !== '' || $statusFilter !== '' || $letterFilter !== ''): ?>
+                            <a href="index.php" class="btn-reset">
+                                <i class="fa-solid fa-arrows-rotate" style="margin-right: 5px;"></i> Reset
+                            </a>
+                        <?php endif; ?>
+                    </div>
+
+                </form>
+
+                <!-- Data Table -->
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">#</th>
+                                <th>Owner Name</th>
+                                <th>ID / Passport No</th>
+                                <th>Date of Birth</th>
+                                <th>Account Number</th>
+                                <th>Last Transaction</th>
+                                <th>Due Amount</th>
+                                <th style="text-align: center; width: 130px;">Status</th>
+                                <th style="text-align: center; width: 130px;">Letter Received</th>
+                                <th style="width: 250px;">Letter Date &amp; File</th>
+                            </tr>
+                        </thead>
+                        <tbody id="assets-tbody">
+                            <?php if (empty($assets)): ?>
+                                <tr>
+                                    <td colspan="10">
+                                        <div class="empty-state">
+                                            <i class="fa-solid fa-folder-open"></i>
+                                            <p>No asset records found matching search or filter parameters.</p>
+                                        </div>
+                                    </td>
+                                </tr>
+                            <?php else: ?>
+                                <?php 
+                                // Dynamic index sequential mapping relative to current page count
+                                $itemIndex = $offset + 1; 
+                                foreach ($assets as $asset): 
+                                ?>
+                                    <tr id="row-<?= $asset['record_id'] ?>">
+                                        <!-- Sequential Item Count -->
+                                        <td class="col-item-no"><?= $itemIndex++ ?></td>
+                                        
+                                        <!-- Owner name -->
+                                        <td class="col-owner"><?= $asset['owner_name'] !== null ? htmlspecialchars($asset['owner_name']) : '<span class="empty-field">Not Provided</span>' ?></td>
+                                        
+                                        <!-- ID / Passport / NSSF -->
+                                        <td><?= $asset['id_passport_no'] !== null ? htmlspecialchars($asset['id_passport_no']) : '<span class="empty-field">-</span>' ?></td>
+                                        
+                                        <!-- DOB -->
+                                        <td><?= $asset['date_of_birth'] !== null ? htmlspecialchars($asset['date_of_birth']) : '<span class="empty-field">-</span>' ?></td>
+                                        
+                                        <!-- Account Number -->
+                                        <td><?= $asset['account_number'] !== null ? htmlspecialchars($asset['account_number']) : '<span class="empty-field">-</span>' ?></td>
+                                        
+                                        <!-- Last Transaction string -->
+                                        <td><?= $asset['last_transaction'] !== null ? htmlspecialchars($asset['last_transaction']) : '<span class="empty-field">-</span>' ?></td>
+                                        
+                                        <!-- Due amount string -->
+                                        <td class="col-amount"><?= $asset['due_amount'] !== null ? htmlspecialchars($asset['due_amount']) : '<span class="empty-field">-</span>' ?></td>
+                                        
+                                        <!-- Claiming status toggle -->
+                                        <td style="text-align: center;">
+                                            <span 
+                                                id="badge-status-<?= $asset['record_id'] ?>" 
+                                                class="status-badge <?= strtolower($asset['status']) ?>"
+                                                onclick="toggleClaimStatus(<?= $asset['record_id'] ?>, '<?= $asset['status'] ?>')"
+                                                title="Click to toggle claim status"
+                                            >
+                                                <?php if ($asset['status'] === 'Claimed'): ?>
+                                                    <i class="fa-solid fa-circle-check"></i> <span>Claimed</span>
+                                                <?php else: ?>
+                                                    <i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>
+                                                <?php endif; ?>
+                                            </span>
+                                        </td>
+
+                                        <!-- Letter received status toggle -->
+                                        <td style="text-align: center;">
+                                            <span 
+                                                id="badge-letter-<?= $asset['record_id'] ?>" 
+                                                class="status-badge letter-<?= strtolower($asset['letter_received']) ?>"
+                                                onclick="toggleLetterReceived(<?= $asset['record_id'] ?>, '<?= $asset['letter_received'] ?>')"
+                                                title="Click to toggle letter received"
+                                            >
+                                                <?php if ($asset['letter_received'] === 'Yes'): ?>
+                                                    <i class="fa-solid fa-envelope-open-text"></i> <span>Yes</span>
+                                                <?php else: ?>
+                                                    <i class="fa-solid fa-envelope"></i> <span>No</span>
+                                                <?php endif; ?>
+                                            </span>
+                                        </td>
+
+                                        <!-- Inline Editable Letter Date Field & File Upload -->
+                                        <td>
+                                            <div class="letter-actions">
+                                                <div class="date-input-container">
+                                                    <input 
+                                                        type="text" 
+                                                        value="<?= htmlspecialchars($asset['letter_date'] ?? '') ?>"
+                                                        data-original="<?= htmlspecialchars($asset['letter_date'] ?? '') ?>"
+                                                        class="date-edit-input" 
+                                                        placeholder="Enter Date..."
+                                                        onblur="handleDateBlur(this, <?= $asset['record_id'] ?>)"
+                                                        onkeydown="handleDateKey(event, this, <?= $asset['record_id'] ?>)"
+                                                    >
+                                                    <i class="date-save-indicator fa-solid fa-pen"></i>
+                                                </div>
+                                                
+                                                <button class="btn-upload-letter" onclick="document.getElementById('letter-upload-<?= $asset['record_id'] ?>').click()" title="Upload Letter File">
+                                                    <i class="fa-solid fa-paperclip"></i>
+                                                </button>
+                                                <input type="file" id="letter-upload-<?= $asset['record_id'] ?>" style="display:none;" onchange="uploadLetter(<?= $asset['record_id'] ?>, this)">
+                                                
+                                                <?php if (!empty($asset['letter_file_path'])): ?>
+                                                    <a href="<?= htmlspecialchars($asset['letter_file_path']) ?>" download class="letter-file-link" title="Download Uploaded Letter">
+                                                        <i class="fa-solid fa-download"></i> Download
+                                                    </a>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Pagination Controls -->
+                <?php if ($totalPages > 1): ?>
+                    <div class="pagination-row">
+                        <div class="pagination-info">
+                            Showing Page <span><?= $page ?></span> of <span><?= $totalPages ?></span> Pages
+                        </div>
+                        <div class="pagination-buttons">
+                            <!-- Prev button -->
+                            <a href="index.php?search=<?= urlencode($search) ?>&status=<?= urlencode($statusFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= max(1, $page - 1) ?>" 
+                               class="btn-page btn-page-nav <?= $page === 1 ? 'disabled' : '' ?>">
+                                <i class="fa-solid fa-chevron-left"></i> Previous
+                            </a>
+
+                            <!-- Page Numbers -->
+                            <?php
+                            $startPage = max(1, $page - 2);
+                            $endPage = min($totalPages, $page + 2);
+                            
+                            for ($i = $startPage; $i <= $endPage; $i++): 
+                            ?>
+                                <a href="index.php?search=<?= urlencode($search) ?>&status=<?= urlencode($statusFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= $i ?>" 
+                                   class="btn-page <?= $i === $page ? 'active' : '' ?>">
+                                    <?= $i ?>
+                                </a>
+                            <?php endfor; ?>
+
+                            <!-- Next button -->
+                            <a href="index.php?search=<?= urlencode($search) ?>&status=<?= urlencode($statusFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= min($totalPages, $page + 1) ?>" 
+                               class="btn-page btn-page-nav <?= $page === $totalPages ? 'disabled' : '' ?>">
+                                Next <i class="fa-solid fa-chevron-right"></i>
+                            </a>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+            </div>
+
+        <?php endif; ?>
+
+<?php require_once 'includes/layout_footer.php'; ?>
