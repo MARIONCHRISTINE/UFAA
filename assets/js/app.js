@@ -242,11 +242,61 @@ function preventDefaults(e) {
     e.stopPropagation();
 }
 
+let selectedExcelFile = null;
+
 function handleFileSelect(e) {
     const files = e.target.files;
     if (files.length > 0) {
-        uploadExcelFile(files[0]);
+        showPreview(files[0]);
     }
+}
+
+function showPreview(file) {
+    // Validate file type first
+    const ext = file.name.split('.').pop().toLowerCase();
+    const allowedFormats = ['xlsx', 'xls', 'csv'];
+    if (!allowedFormats.includes(ext)) {
+        showNotification('error', 'Unsupported format! Please upload an Excel file (.xlsx, .xls) or a CSV file (.csv).');
+        document.getElementById('file-input').value = '';
+        return;
+    }
+
+    selectedExcelFile = file;
+    
+    // Switch UI views
+    document.getElementById('upload-default-view').style.display = 'none';
+    document.getElementById('upload-approved-view').style.display = 'none';
+    document.getElementById('upload-progress-container').style.display = 'none';
+    
+    const previewView = document.getElementById('upload-preview-view');
+    previewView.style.display = 'block';
+    
+    // Populate preview details
+    document.getElementById('preview-filename').innerText = file.name;
+    const sizeKB = (file.size / 1024).toFixed(1);
+    document.getElementById('preview-filesize').innerText = `Size: ${sizeKB} KB`;
+}
+
+function cancelUpload() {
+    selectedExcelFile = null;
+    document.getElementById('file-input').value = '';
+    
+    document.getElementById('upload-preview-view').style.display = 'none';
+    document.getElementById('upload-approved-view').style.display = 'none';
+    document.getElementById('upload-progress-container').style.display = 'none';
+    document.getElementById('upload-default-view').style.display = 'block';
+}
+
+function confirmUpload() {
+    if (selectedExcelFile) {
+        uploadExcelFile(selectedExcelFile);
+    }
+}
+
+function resetUploader() {
+    cancelUpload();
+    // Optional: reload the page to show newly imported data
+    window.location.reload();
 }
 
 function uploadExcelFile(file) {
@@ -255,13 +305,8 @@ function uploadExcelFile(file) {
     const progressPercent = document.getElementById('progress-percent');
     const progressStatus = document.getElementById('progress-status');
 
-    // File type validation — supports .xlsx, .xls, and .csv
-    const ext = file.name.split('.').pop().toLowerCase();
-    const allowedFormats = ['xlsx', 'xls', 'csv'];
-    if (!allowedFormats.includes(ext)) {
-        showNotification('error', 'Unsupported format! Please upload an Excel file (.xlsx, .xls) or a CSV file (.csv).');
-        return;
-    }
+    // Hide preview buttons
+    document.getElementById('upload-preview-view').style.display = 'none';
 
     if (progressContainer) {
         progressContainer.style.display = 'block';
@@ -299,14 +344,16 @@ function uploadExcelFile(file) {
 
         if (xhr.status === 200 && response.status === 'success') {
             showNotification('success', response.message);
-            if (progressStatus) progressStatus.innerText = 'Import complete!';
+            if (progressContainer) progressContainer.style.display = 'none';
             
-            // Reload page to show fresh rows
-            setTimeout(() => {
-                window.location.href = 'index.php';
-            }, 1200);
+            // Show Approved View
+            document.getElementById('upload-approved-view').style.display = 'block';
+            document.getElementById('approved-message').innerText = response.message;
+            
         } else {
             if (progressContainer) progressContainer.style.display = 'none';
+            // Fallback to preview view so they can try again
+            document.getElementById('upload-preview-view').style.display = 'block';
             showNotification('error', response.message || 'Excel processing failed.');
         }
     });

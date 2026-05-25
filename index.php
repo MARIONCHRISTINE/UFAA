@@ -176,19 +176,47 @@ require_once 'includes/layout.php';
             </div>
 
             <!-- Premium Animated Excel Drag-and-Drop Uploader -->
-            <div class="uploader-card" id="dropzone" onclick="document.getElementById('file-input').click()">
-                <div class="upload-icon-wrapper">
-                    <i class="fa-solid fa-file-excel"></i>
+            <div class="uploader-card" id="dropzone">
+                <!-- Default State -->
+                <div id="upload-default-view" onclick="document.getElementById('file-input').click()" style="cursor:pointer;">
+                    <div class="upload-icon-wrapper">
+                        <i class="fa-solid fa-file-excel"></i>
+                    </div>
+                    <h3>Drag & Drop Compliance Sheet</h3>
+                    <p>or <span style="color:var(--airtel-red); font-weight:600;">browse files</span> from your computer</p>
+                    <div class="supported-types" style="margin-top:10px;">Supported Formats: Excel (.xlsx · .xls) &amp; CSV (.csv)</div>
                 </div>
-                <h3>Drag & Drop Compliance Sheet</h3>
-                <p>or <span>browse files</span> from your computer</p>
                 
                 <input type="file" id="file-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)" style="display:none;">
                 
-                <div class="supported-types">Supported Formats: Excel (.xlsx · .xls) &amp; CSV (.csv)</div>
+                <!-- Preview State -->
+                <div id="upload-preview-view" style="display: none; padding: 1rem;">
+                    <div style="font-size: 3rem; color: #2563eb; margin-bottom: 10px;">
+                        <i class="fa-solid fa-file-lines"></i>
+                    </div>
+                    <h4 id="preview-filename" style="margin-bottom: 5px; word-break: break-all;">filename.xlsx</h4>
+                    <p id="preview-filesize" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px;">Size: 0KB</p>
+                    
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                        <button class="btn-reset" onclick="cancelUpload()">Cancel</button>
+                        <button class="btn-filter" id="btn-upload-action" onclick="confirmUpload()">
+                            <i class="fa-solid fa-cloud-arrow-up"></i> Upload Now
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Approved / Success State -->
+                <div id="upload-approved-view" style="display: none; padding: 1rem;">
+                    <div style="font-size: 3rem; color: #16a34a; margin-bottom: 10px;">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                    <h4 style="color: #16a34a; margin-bottom: 5px;">File Approved!</h4>
+                    <p id="approved-message" style="font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 15px;">Data successfully imported into the system.</p>
+                    <button class="btn-reset" onclick="resetUploader()">Upload Another File</button>
+                </div>
 
                 <!-- Progress Bar during AJAX upload -->
-                <div class="progress-container" id="upload-progress-container" onclick="event.stopPropagation()">
+                <div class="progress-container" id="upload-progress-container" style="display:none; margin-top: 20px;" onclick="event.stopPropagation()">
                     <div class="progress-label">
                         <span id="progress-status">Uploading compliance rows...</span>
                         <span id="progress-percent">0%</span>
