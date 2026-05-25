@@ -6,7 +6,9 @@ try {
     $pdo = get_db_connection();
 } catch (Exception $e) { $dbInitialized = false; }
 
-$search = trim($_GET['search'] ?? '');
+$ownerNameFilter = trim($_GET['owner_name'] ?? '');
+$idNoFilter = trim($_GET['id_no'] ?? '');
+$accountNoFilter = trim($_GET['account_no'] ?? '');
 $statusFilter = trim($_GET['status'] ?? '');
 $letterFilter = 'Yes'; // Force letters received
 $page = max(1, intval($_GET['page'] ?? 1));
@@ -18,9 +20,17 @@ $totalPages = 1;
 if ($dbInitialized && $pdo) {
     $whereClauses = ["`letter_received` = 'Yes'"];
     $params = [];
-    if ($search !== '') {
-        $whereClauses[] = "(`owner_name` LIKE :search OR `id_passport_no` LIKE :search OR `account_number` LIKE :search)";
-        $params[':search'] = '%' . $search . '%';
+    if ($ownerNameFilter !== '') {
+        $whereClauses[] = "`owner_name` LIKE :owner_name";
+        $params[':owner_name'] = '%' . $ownerNameFilter . '%';
+    }
+    if ($idNoFilter !== '') {
+        $whereClauses[] = "`id_passport_no` LIKE :id_no";
+        $params[':id_no'] = '%' . $idNoFilter . '%';
+    }
+    if ($accountNoFilter !== '') {
+        $whereClauses[] = "`account_number` LIKE :account_no";
+        $params[':account_no'] = '%' . $accountNoFilter . '%';
     }
     if ($statusFilter !== '') {
         $whereClauses[] = "`status` = :status";
@@ -29,10 +39,13 @@ if ($dbInitialized && $pdo) {
     $whereSql = 'WHERE ' . implode(' AND ', $whereClauses);
     $countQuery = $pdo->prepare("SELECT COUNT(*) FROM `unclaimed_assets` $whereSql");
     $countQuery->execute($params);
-    $totalPages = ceil($countQuery->fetchColumn() / $limit);
+    $totalFiltered = $countQuery->fetchColumn();
+    $totalPages = ceil($totalFiltered / $limit);
 
-    $stmt = $pdo->prepare("SELECT * FROM `unclaimed_assets` $whereSql ORDER BY `record_id` DESC LIMIT $limit OFFSET $offset");
+    $stmt = $pdo->prepare("SELECT * FROM `unclaimed_assets` $whereSql ORDER BY `record_id` DESC LIMIT :limit OFFSET :offset");
     foreach ($params as $key => $val) { $stmt->bindValue($key, $val); }
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
     $stmt->execute();
     $assets = $stmt->fetchAll();
 }
@@ -41,24 +54,48 @@ $activePage = 'letters';
 require_once 'includes/layout.php';
 ?>
 
-<div class="data-management-card" style="margin-top: 1rem;">
+<div class="data-management-card" id="records-section" style="margin-top: 1rem;">
     <h2 style="margin-bottom: 1.5rem; color: var(--airtel-red);">Letters Received</h2>
     
-    <form method="GET" action="letters.php" class="filters-row">
-        <div class="search-wrapper">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Search..." class="search-input">
+    <!-- Advanced Searching & Filtering controls -->
+    <form method="GET" action="letters.php#records-section" class="filters-panel">
+        <div class="filters-grid">
+            <div class="filter-group">
+                <label>Owner Name</label>
+                <input type="text" name="owner_name" value="<?= htmlspecialchars($ownerNameFilter) ?>" placeholder="Search owner name..." class="filter-input">
+            </div>
+            <div class="filter-group">
+                <label>ID / Passport No</label>
+                <input type="text" name="id_no" value="<?= htmlspecialchars($idNoFilter) ?>" placeholder="Search ID/Passport..." class="filter-input">
+            </div>
+            <div class="filter-group">
+                <label>Account Number</label>
+                <input type="text" name="account_no" value="<?= htmlspecialchars($accountNoFilter) ?>" placeholder="Search account number..." class="filter-input">
+            </div>
+            <div class="filter-group">
+                <label>Claim Status</label>
+                <select name="status" class="filter-input">
+                    <option value="">-- All Statuses --</option>
+                    <option value="Unclaimed" <?= $statusFilter === 'Unclaimed' ? 'selected' : '' ?>>Unclaimed Only</option>
+                    <option value="Claimed" <?= $statusFilter === 'Claimed' ? 'selected' : '' ?>>Claimed Only</option>
+                </select>
+            </div>
         </div>
-        <div class="filter-controls">
-            <select name="status" class="select-filter">
-                <option value="">-- All Claims --</option>
-                <option value="Unclaimed" <?= $statusFilter === 'Unclaimed' ? 'selected' : '' ?>>Unclaimed Only</option>
-                <option value="Claimed" <?= $statusFilter === 'Claimed' ? 'selected' : '' ?>>Claimed Only</option>
-            </select>
-            <button type="submit" class="btn-filter">Filter</button>
-            <?php if ($search !== '' || $statusFilter !== ''): ?>
-                <a href="letters.php" class="btn-reset">Reset</a>
-            <?php endif; ?>
+
+        <div class="filters-actions">
+            <div class="filters-buttons">
+                <button type="submit" class="btn-filter">
+                    <i class="fa-solid fa-filter"></i> Apply Filters
+                </button>
+                <?php if ($ownerNameFilter !== '' || $idNoFilter !== '' || $accountNoFilter !== '' || $statusFilter !== ''): ?>
+                    <a href="letters.php" class="btn-reset">
+                        <i class="fa-solid fa-arrows-rotate"></i> Reset
+                    </a>
+                <?php endif; ?>
+            </div>
+            <a href="ajax/download_letters_zip.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=<?= urlencode($statusFilter) ?>" class="btn-zip" title="Download matching letters in a ZIP file">
+                <i class="fa-solid fa-file-archive"></i> Download Letters ZIP
+            </a>
         </div>
     </form>
 
@@ -66,19 +103,19 @@ require_once 'includes/layout.php';
         <table>
             <thead>
                 <tr>
-                    <th>#</th>
+                    <th style="width: 50px;">#</th>
                     <th>Owner Name</th>
                     <th>ID / Passport No</th>
                     <th>Account Number</th>
                     <th>Due Amount</th>
-                    <th style="text-align: center;">Status</th>
-                    <th style="text-align: center;">Letter Received</th>
-                    <th>Letter Date &amp; File</th>
+                    <th style="text-align: center; width: 130px;">Status</th>
+                    <th style="text-align: center; width: 130px;">Letter Received</th>
+                    <th style="width: 250px;">Letter Date &amp; File</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($assets)): ?>
-                    <tr><td colspan="8"><div class="empty-state"><p>No letters received records found.</p></div></td></tr>
+                    <tr><td colspan="8"><div class="empty-state"><p>No letters received records found matching search or filter parameters.</p></div></td></tr>
                 <?php else: ?>
                     <?php $itemIndex = $offset + 1; foreach ($assets as $asset): ?>
                         <tr id="row-<?= $asset['record_id'] ?>">
@@ -88,12 +125,24 @@ require_once 'includes/layout.php';
                             <td><?= htmlspecialchars($asset['account_number'] ?? '-') ?></td>
                             <td class="col-amount"><?= htmlspecialchars($asset['due_amount'] ?? '-') ?></td>
                             <td style="text-align: center;">
-                                <span class="status-badge <?= strtolower($asset['status']) ?>" onclick="toggleClaimStatus(<?= $asset['record_id'] ?>, '<?= $asset['status'] ?>')">
+                                <span 
+                                    id="badge-status-<?= $asset['record_id'] ?>" 
+                                    class="status-badge <?= strtolower($asset['status']) ?>" 
+                                    onclick="toggleClaimStatus(<?= $asset['record_id'] ?>, '<?= $asset['status'] ?>')"
+                                    title="Click to toggle claim status"
+                                >
                                     <?= $asset['status'] === 'Claimed' ? '<i class="fa-solid fa-circle-check"></i> <span>Claimed</span>' : '<i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>' ?>
                                 </span>
                             </td>
                             <td style="text-align: center;">
-                                <span class="status-badge letter-yes"><i class="fa-solid fa-envelope-open-text"></i> <span>Yes</span></span>
+                                <span 
+                                    id="badge-letter-<?= $asset['record_id'] ?>" 
+                                    class="status-badge letter-yes" 
+                                    onclick="toggleLetterReceived(<?= $asset['record_id'] ?>, '<?= $asset['letter_received'] ?>')"
+                                    title="Click to toggle letter received"
+                                >
+                                    <i class="fa-solid fa-envelope-open-text"></i> <span>Yes</span>
+                                </span>
                             </td>
                             <td>
                                 <div class="letter-actions">
@@ -114,6 +163,41 @@ require_once 'includes/layout.php';
             </tbody>
         </table>
     </div>
+
+    <!-- Pagination Controls -->
+    <?php if ($totalPages > 1): ?>
+        <div class="pagination-row" style="margin-top: 1.5rem;">
+            <div class="pagination-info">
+                Showing Page <span><?= $page ?></span> of <span><?= $totalPages ?></span> Pages
+            </div>
+            <div class="pagination-buttons">
+                <!-- Prev button -->
+                <a href="letters.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=<?= urlencode($statusFilter) ?>&page=<?= max(1, $page - 1) ?>#records-section" 
+                   class="btn-page btn-page-nav <?= $page === 1 ? 'disabled' : '' ?>">
+                    <i class="fa-solid fa-chevron-left"></i> Previous
+                </a>
+
+                <!-- Page Numbers -->
+                <?php
+                $startPage = max(1, $page - 2);
+                $endPage = min($totalPages, $page + 2);
+                
+                for ($i = $startPage; $i <= $endPage; $i++): 
+                ?>
+                    <a href="letters.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=<?= urlencode($statusFilter) ?>&page=<?= $i ?>#records-section" 
+                       class="btn-page <?= $i === $page ? 'active' : '' ?>">
+                        <?= $i ?>
+                    </a>
+                <?php endfor; ?>
+
+                <!-- Next button -->
+                <a href="letters.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=<?= urlencode($statusFilter) ?>&page=<?= min($totalPages, $page + 1) ?>#records-section" 
+                   class="btn-page btn-page-nav <?= $page === $totalPages ? 'disabled' : '' ?>">
+                    Next <i class="fa-solid fa-chevron-right"></i>
+                </a>
+            </div>
+        </div>
+    <?php endif; ?>
 </div>
 
 <?php require_once 'includes/layout_footer.php'; ?>

@@ -35,7 +35,9 @@ $totalClaimed = 0;
 $totalLettersReceived = 0;
 
 // Pagination and Search Params
-$search = trim($_GET['search'] ?? '');
+$ownerNameFilter = trim($_GET['owner_name'] ?? '');
+$idNoFilter = trim($_GET['id_no'] ?? '');
+$accountNoFilter = trim($_GET['account_no'] ?? '');
 $statusFilter = trim($_GET['status'] ?? '');
 $letterFilter = trim($_GET['letter'] ?? '');
 $page = max(1, intval($_GET['page'] ?? 1));
@@ -56,13 +58,19 @@ if ($dbInitialized && $pdo) {
         $whereClauses = [];
         $params = [];
 
-        if ($search !== '') {
-            $whereClauses[] = "(
-                `owner_name` LIKE :search OR 
-                `id_passport_no` LIKE :search OR 
-                `account_number` LIKE :search
-            )";
-            $params[':search'] = '%' . $search . '%';
+        if ($ownerNameFilter !== '') {
+            $whereClauses[] = "`owner_name` LIKE :owner_name";
+            $params[':owner_name'] = '%' . $ownerNameFilter . '%';
+        }
+
+        if ($idNoFilter !== '') {
+            $whereClauses[] = "`id_passport_no` LIKE :id_no";
+            $params[':id_no'] = '%' . $idNoFilter . '%';
+        }
+
+        if ($accountNoFilter !== '') {
+            $whereClauses[] = "`account_number` LIKE :account_no";
+            $params[':account_no'] = '%' . $accountNoFilter . '%';
         }
 
         if ($statusFilter !== '') {
@@ -230,40 +238,56 @@ require_once 'includes/layout.php';
             </div>
 
             <!-- Data Management & Table Card -->
-            <div class="data-management-card">
+            <div class="data-management-card" id="records-section">
                 
                 <!-- Advanced Searching & Filtering controls -->
-                <form method="GET" action="index.php" class="filters-row">
-                    
-                    <div class="search-wrapper">
-                        <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" name="search" value="<?= htmlspecialchars($search) ?>" placeholder="Search by Owner Name, ID/Passport No, Account No..." class="search-input">
+                <form method="GET" action="index.php#records-section" class="filters-panel">
+                    <div class="filters-grid">
+                        <div class="filter-group">
+                            <label>Owner Name</label>
+                            <input type="text" name="owner_name" value="<?= htmlspecialchars($ownerNameFilter) ?>" placeholder="Search owner name..." class="filter-input">
+                        </div>
+                        <div class="filter-group">
+                            <label>ID / Passport No</label>
+                            <input type="text" name="id_no" value="<?= htmlspecialchars($idNoFilter) ?>" placeholder="Search ID/Passport..." class="filter-input">
+                        </div>
+                        <div class="filter-group">
+                            <label>Account Number</label>
+                            <input type="text" name="account_no" value="<?= htmlspecialchars($accountNoFilter) ?>" placeholder="Search account number..." class="filter-input">
+                        </div>
+                        <div class="filter-group">
+                            <label>Claim Status</label>
+                            <select name="status" class="filter-input">
+                                <option value="">-- All Statuses --</option>
+                                <option value="Unclaimed" <?= $statusFilter === 'Unclaimed' ? 'selected' : '' ?>>Unclaimed Only</option>
+                                <option value="Claimed" <?= $statusFilter === 'Claimed' ? 'selected' : '' ?>>Claimed Only</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Letter Received</label>
+                            <select name="letter" class="filter-input">
+                                <option value="">-- All Letters --</option>
+                                <option value="Yes" <?= $letterFilter === 'Yes' ? 'selected' : '' ?>>Letter Received</option>
+                                <option value="No" <?= $letterFilter === 'No' ? 'selected' : '' ?>>No Letter Received</option>
+                            </select>
+                        </div>
                     </div>
 
-                    <div class="filter-controls">
-                        <!-- Claim Status Filter -->
-                        <select name="status" class="select-filter">
-                            <option value="">-- All Claims --</option>
-                            <option value="Unclaimed" <?= $statusFilter === 'Unclaimed' ? 'selected' : '' ?>>Unclaimed Only</option>
-                            <option value="Claimed" <?= $statusFilter === 'Claimed' ? 'selected' : '' ?>>Claimed Only</option>
-                        </select>
-
-                        <!-- Letter Status Filter -->
-                        <select name="letter" class="select-filter">
-                            <option value="">-- All Letters --</option>
-                            <option value="Yes" <?= $letterFilter === 'Yes' ? 'selected' : '' ?>>Letter Received</option>
-                            <option value="No" <?= $letterFilter === 'No' ? 'selected' : '' ?>>No Letter Received</option>
-                        </select>
-
-                        <button type="submit" class="btn-filter">Filter</button>
-                        
-                        <?php if ($search !== '' || $statusFilter !== '' || $letterFilter !== ''): ?>
-                            <a href="index.php" class="btn-reset">
-                                <i class="fa-solid fa-arrows-rotate" style="margin-right: 5px;"></i> Reset
-                            </a>
-                        <?php endif; ?>
+                    <div class="filters-actions">
+                        <div class="filters-buttons">
+                            <button type="submit" class="btn-filter">
+                                <i class="fa-solid fa-filter"></i> Apply Filters
+                            </button>
+                            <?php if ($ownerNameFilter !== '' || $idNoFilter !== '' || $accountNoFilter !== '' || $statusFilter !== '' || $letterFilter !== ''): ?>
+                                <a href="index.php" class="btn-reset">
+                                    <i class="fa-solid fa-arrows-rotate"></i> Reset
+                                </a>
+                            <?php endif; ?>
+                        </div>
+                        <a href="ajax/export.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=<?= urlencode($statusFilter) ?>&letter=<?= urlencode($letterFilter) ?>" class="btn-export" title="Download matching assets to Excel">
+                            <i class="fa-solid fa-file-excel"></i> Download Excel
+                        </a>
                     </div>
-
                 </form>
 
                 <!-- Data Table -->
@@ -396,7 +420,7 @@ require_once 'includes/layout.php';
                         </div>
                         <div class="pagination-buttons">
                             <!-- Prev button -->
-                            <a href="index.php?search=<?= urlencode($search) ?>&status=<?= urlencode($statusFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= max(1, $page - 1) ?>" 
+                            <a href="index.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=<?= urlencode($statusFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= max(1, $page - 1) ?>#records-section" 
                                class="btn-page btn-page-nav <?= $page === 1 ? 'disabled' : '' ?>">
                                 <i class="fa-solid fa-chevron-left"></i> Previous
                             </a>
@@ -408,14 +432,14 @@ require_once 'includes/layout.php';
                             
                             for ($i = $startPage; $i <= $endPage; $i++): 
                             ?>
-                                <a href="index.php?search=<?= urlencode($search) ?>&status=<?= urlencode($statusFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= $i ?>" 
+                                <a href="index.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=<?= urlencode($statusFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= $i ?>#records-section" 
                                    class="btn-page <?= $i === $page ? 'active' : '' ?>">
                                     <?= $i ?>
                                 </a>
                             <?php endfor; ?>
 
                             <!-- Next button -->
-                            <a href="index.php?search=<?= urlencode($search) ?>&status=<?= urlencode($statusFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= min($totalPages, $page + 1) ?>" 
+                            <a href="index.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=<?= urlencode($statusFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= min($totalPages, $page + 1) ?>#records-section" 
                                class="btn-page btn-page-nav <?= $page === $totalPages ? 'disabled' : '' ?>">
                                 Next <i class="fa-solid fa-chevron-right"></i>
                             </a>

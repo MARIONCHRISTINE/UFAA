@@ -83,21 +83,49 @@ function updateRecord(recordId, fieldName, newValue, callback) {
     });
 }
 
-// 4. Interactive Badge Status Toggles (Claim Status / Letter Received)
+// 4. Interactive Badge Status Toggles via Popups
 function toggleClaimStatus(recordId, currentStatus) {
+    const overlay = document.getElementById('status-popup-overlay');
+    if (!overlay) return;
+    
+    document.getElementById('status-popup-record-id').value = recordId;
+    
+    const unclaimedRadio = document.querySelector('input[name="status-radio"][value="Unclaimed"]');
+    const claimedRadio = document.querySelector('input[name="status-radio"][value="Claimed"]');
+    
+    if (currentStatus === 'Claimed') {
+        if (claimedRadio) claimedRadio.checked = true;
+    } else {
+        if (unclaimedRadio) unclaimedRadio.checked = true;
+    }
+    
+    updateRadioLabels('status');
+    overlay.classList.add('show');
+}
+
+function closeStatusPopup() {
+    const overlay = document.getElementById('status-popup-overlay');
+    if (overlay) overlay.classList.remove('show');
+}
+
+function saveStatusPopup() {
+    const recordId = document.getElementById('status-popup-record-id').value;
+    const selectedRadio = document.querySelector('input[name="status-radio"]:checked');
+    if (!selectedRadio) return;
+    
+    const nextStatus = selectedRadio.value;
     const badge = document.getElementById(`badge-status-${recordId}`);
-    if (!badge || badge.getAttribute('data-loading') === 'true') return;
-
-    badge.setAttribute('data-loading', 'true');
-    const originalHTML = badge.innerHTML;
-    badge.innerHTML = '<i class="badge-spinner"></i> <span>Saving...</span>';
-
-    const nextStatus = currentStatus === 'Claimed' ? 'Unclaimed' : 'Claimed';
-
+    if (badge) {
+        badge.setAttribute('data-loading', 'true');
+        badge.innerHTML = '<i class="badge-spinner"></i> <span>Saving...</span>';
+    }
+    
     updateRecord(recordId, 'status', nextStatus, (success, data) => {
+        closeStatusPopup();
+        if (!badge) return;
         badge.removeAttribute('data-loading');
         if (success) {
-            // Update UI badge classes & click handler
+            const currentBadgeVal = badge.classList.contains('claimed') ? 'Claimed' : 'Unclaimed';
             badge.className = `status-badge ${nextStatus.toLowerCase()}`;
             badge.setAttribute('onclick', `toggleClaimStatus(${recordId}, '${nextStatus}')`);
             
@@ -107,29 +135,59 @@ function toggleClaimStatus(recordId, currentStatus) {
                 badge.innerHTML = '<i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>';
             }
 
-            // Realtime stats counters adjustments
-            adjustCounter('stat-claimed', nextStatus === 'Claimed' ? 1 : -1);
-            adjustCounter('stat-unclaimed', nextStatus === 'Unclaimed' ? 1 : -1);
+            if (currentBadgeVal !== nextStatus) {
+                adjustCounter('stat-claimed', nextStatus === 'Claimed' ? 1 : -1);
+                adjustCounter('stat-unclaimed', nextStatus === 'Unclaimed' ? 1 : -1);
+            }
         } else {
-            badge.innerHTML = originalHTML;
+            const isClaimed = badge.classList.contains('claimed');
+            badge.innerHTML = isClaimed ? '<i class="fa-solid fa-circle-check"></i> <span>Claimed</span>' : '<i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>';
         }
     });
 }
 
 function toggleLetterReceived(recordId, currentVal) {
+    const overlay = document.getElementById('letter-popup-overlay');
+    if (!overlay) return;
+    
+    document.getElementById('letter-popup-record-id').value = recordId;
+    
+    const noRadio = document.querySelector('input[name="letter-radio"][value="No"]');
+    const yesRadio = document.querySelector('input[name="letter-radio"][value="Yes"]');
+    
+    if (currentVal === 'Yes') {
+        if (yesRadio) yesRadio.checked = true;
+    } else {
+        if (noRadio) noRadio.checked = true;
+    }
+    
+    updateRadioLabels('letter');
+    overlay.classList.add('show');
+}
+
+function closeLetterPopup() {
+    const overlay = document.getElementById('letter-popup-overlay');
+    if (overlay) overlay.classList.remove('show');
+}
+
+function saveLetterPopup() {
+    const recordId = document.getElementById('letter-popup-record-id').value;
+    const selectedRadio = document.querySelector('input[name="letter-radio"]:checked');
+    if (!selectedRadio) return;
+    
+    const nextVal = selectedRadio.value;
     const badge = document.getElementById(`badge-letter-${recordId}`);
-    if (!badge || badge.getAttribute('data-loading') === 'true') return;
-
-    badge.setAttribute('data-loading', 'true');
-    const originalHTML = badge.innerHTML;
-    badge.innerHTML = '<i class="badge-spinner"></i> <span>Saving...</span>';
-
-    const nextVal = currentVal === 'Yes' ? 'No' : 'Yes';
-
+    if (badge) {
+        badge.setAttribute('data-loading', 'true');
+        badge.innerHTML = '<i class="badge-spinner"></i> <span>Saving...</span>';
+    }
+    
     updateRecord(recordId, 'letter_received', nextVal, (success, data) => {
+        closeLetterPopup();
+        if (!badge) return;
         badge.removeAttribute('data-loading');
         if (success) {
-            // Update UI badge classes & click handler
+            const currentBadgeVal = badge.classList.contains('letter-yes') ? 'Yes' : 'No';
             badge.className = `status-badge letter-${nextVal.toLowerCase()}`;
             badge.setAttribute('onclick', `toggleLetterReceived(${recordId}, '${nextVal}')`);
             
@@ -139,13 +197,60 @@ function toggleLetterReceived(recordId, currentVal) {
                 badge.innerHTML = '<i class="fa-solid fa-envelope"></i> <span>No</span>';
             }
 
-            // Realtime stats counters adjustments
-            adjustCounter('stat-letters', nextVal === 'Yes' ? 1 : -1);
+            if (currentBadgeVal !== nextVal) {
+                adjustCounter('stat-letters', nextVal === 'Yes' ? 1 : -1);
+            }
         } else {
-            badge.innerHTML = originalHTML;
+            const isYes = badge.classList.contains('letter-yes');
+            badge.innerHTML = isYes ? '<i class="fa-solid fa-envelope-open-text"></i> <span>Yes</span>' : '<i class="fa-solid fa-envelope"></i> <span>No</span>';
         }
     });
 }
+
+function updateRadioLabels(type) {
+    if (type === 'status') {
+        const labels = ['unclaimed', 'claimed'];
+        labels.forEach(lbl => {
+            const labelEl = document.getElementById(`label-status-${lbl}`);
+            if (!labelEl) return;
+            const radio = labelEl.querySelector('input');
+            if (radio && radio.checked) {
+                labelEl.classList.add('active');
+            } else {
+                labelEl.classList.remove('active');
+            }
+        });
+    } else if (type === 'letter') {
+        const labels = ['no', 'yes'];
+        labels.forEach(lbl => {
+            const labelEl = document.getElementById(`label-letter-${lbl}`);
+            if (!labelEl) return;
+            const radio = labelEl.querySelector('input');
+            if (radio && radio.checked) {
+                labelEl.classList.add('active');
+            } else {
+                labelEl.classList.remove('active');
+            }
+        });
+    }
+}
+
+// Close overlays when clicking on the overlay background
+document.addEventListener('DOMContentLoaded', () => {
+    const statusOverlay = document.getElementById('status-popup-overlay');
+    const letterOverlay = document.getElementById('letter-popup-overlay');
+    
+    if (statusOverlay) {
+        statusOverlay.addEventListener('click', (e) => {
+            if (e.target === statusOverlay) closeStatusPopup();
+        });
+    }
+    if (letterOverlay) {
+        letterOverlay.addEventListener('click', (e) => {
+            if (e.target === letterOverlay) closeLetterPopup();
+        });
+    }
+});
 
 // Helper to increase or decrease global statistics values beautifully
 function adjustCounter(elementId, changeAmount) {
@@ -396,7 +501,10 @@ function uploadLetter(recordId, inputElement) {
         if (data.status === 'success') {
             showNotification('success', data.message);
             // Optionally reload to show the view link immediately
-            setTimeout(() => window.location.reload(), 1000);
+            setTimeout(() => {
+                window.location.hash = 'row-' + recordId;
+                window.location.reload();
+            }, 1000);
         } else {
             showNotification('error', data.message);
         }
