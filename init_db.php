@@ -45,6 +45,15 @@ try {
     
     $pdo->exec($tableQuery);
 
+    // 3b. Create the uploaded_files tracking table if it doesn't exist
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS `uploaded_files` (
+            `id` INT AUTO_INCREMENT PRIMARY KEY,
+            `file_name` VARCHAR(500) NOT NULL UNIQUE,
+            `uploaded_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ");
+
     // 4. Migration Check (Self-Healing): 
     // If the table already existed but was missing our new letter columns, add them dynamically.
     $existingColumns = [];

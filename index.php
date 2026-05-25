@@ -198,7 +198,9 @@ require_once 'includes/layout.php';
                     <p id="preview-filesize" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 15px;">Size: 0KB</p>
                     
                     <div style="display: flex; gap: 10px; justify-content: center;">
-                        <button class="btn-reset" onclick="cancelUpload()">Cancel</button>
+                        <button class="btn-reset" onclick="cancelUpload()">
+                            <i class="fa-solid fa-trash-can"></i> Remove File
+                        </button>
                         <button class="btn-filter" id="btn-upload-action" onclick="confirmUpload()">
                             <i class="fa-solid fa-cloud-arrow-up"></i> Upload Now
                         </button>

@@ -37,6 +37,20 @@ if (!in_array($fileExt, $allowedFormats)) {
     exit;
 }
 
+// ─── Duplicate filename check ──────────────────────────────────────────────
+$cleanFileName = trim($fileName);
+$dupCheck = $pdo->prepare("SELECT `id`, `uploaded_at` FROM `uploaded_files` WHERE `file_name` = ? LIMIT 1");
+$dupCheck->execute([$cleanFileName]);
+$existing = $dupCheck->fetch();
+if ($existing) {
+    $uploadedOn = date('d M Y, H:i', strtotime($existing['uploaded_at']));
+    echo json_encode([
+        'status'  => 'duplicate',
+        'message' => "\"$cleanFileName\" was already uploaded on $uploadedOn. Please rename the file if this is a new dataset."
+    ]);
+    exit;
+}
+
 // ─── Shared DB insert helper ───────────────────────────────────────────────
 function insertRows(PDO $pdo, array $rows): array
 {
@@ -120,6 +134,9 @@ try {
     // ─── Insert all parsed rows ───────────────────────────────────────────
     $result = insertRows($pdo, $allRows);
     $pdo->commit();
+
+    // ─── Record the filename to prevent future re-uploads ─────────────────
+    $pdo->prepare("INSERT IGNORE INTO `uploaded_files` (`file_name`) VALUES (?)")->execute([$cleanFileName]);
 
     $totalParsed = count($allRows);
     echo json_encode([

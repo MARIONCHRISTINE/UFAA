@@ -22,7 +22,8 @@ $activePage = $activePage ?? 'home';
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Shared Stylesheet -->
-    <link rel="stylesheet" href="assets/css/style.css">
+    <?php $cssVersion = file_exists(__DIR__ . '/../assets/css/style.css') ? filemtime(__DIR__ . '/../assets/css/style.css') : time(); ?>
+    <link rel="stylesheet" href="assets/css/style.css?v=<?= $cssVersion ?>">
 </head>
 <body>
 

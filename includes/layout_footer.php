@@ -12,6 +12,7 @@
 </footer>
 
 <!-- Shared JS -->
-<script src="assets/js/app.js"></script>
+<?php $jsVersion = file_exists(__DIR__ . '/../assets/js/app.js') ? filemtime(__DIR__ . '/../assets/js/app.js') : time(); ?>
+<script src="assets/js/app.js?v=<?= $jsVersion ?>"></script>
 </body>
 </html>

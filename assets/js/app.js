@@ -226,12 +226,12 @@ document.addEventListener('DOMContentLoaded', () => {
             dropzone.addEventListener(eventName, () => dropzone.classList.remove('dragover'), false);
         });
 
-        // Receive dropped file
+        // Receive dropped file — show preview first, same as browse
         dropzone.addEventListener('drop', e => {
             const dt = e.dataTransfer;
             const files = dt.files;
             if (files.length > 0) {
-                uploadExcelFile(files[0]);
+                showPreview(files[0]);
             }
         }, false);
     }
@@ -349,7 +349,16 @@ function uploadExcelFile(file) {
             // Show Approved View
             document.getElementById('upload-approved-view').style.display = 'block';
             document.getElementById('approved-message').innerText = response.message;
-            
+
+        } else if (response.status === 'duplicate') {
+            // File already uploaded — show warning and reset to default view
+            if (progressContainer) progressContainer.style.display = 'none';
+            selectedExcelFile = null;
+            document.getElementById('file-input').value = '';
+            document.getElementById('upload-preview-view').style.display = 'none';
+            document.getElementById('upload-default-view').style.display = 'block';
+            showNotification('error', '⚠️ ' + response.message);
+
         } else {
             if (progressContainer) progressContainer.style.display = 'none';
             // Fallback to preview view so they can try again
