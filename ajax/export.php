@@ -12,28 +12,21 @@ if (!$pdo) {
 }
 
 // Extract filter parameters
-$ownerName = trim($_GET['owner_name'] ?? '');
-$idNo      = trim($_GET['id_no'] ?? '');
-$accountNo = trim($_GET['account_no'] ?? '');
-$status    = trim($_GET['status'] ?? '');
-$letter    = trim($_GET['letter'] ?? '');
+$ownerName          = trim($_GET['owner_name'] ?? '');
+$idNo               = trim($_GET['id_no'] ?? '');
+$accountNo          = trim($_GET['account_no'] ?? '');
+$status             = trim($_GET['status'] ?? '');
+$letter             = trim($_GET['letter'] ?? '');
+$compilationStart   = trim($_GET['compilation_start'] ?? '');
+$compilationEnd     = trim($_GET['compilation_end'] ?? '');
 
 // Build query
 $whereClauses = [];
 $params = [];
 
-if ($ownerName !== '') {
-    $whereClauses[] = "`owner_name` LIKE :owner_name";
-    $params[':owner_name'] = '%' . $ownerName . '%';
-}
-if ($idNo !== '') {
-    $whereClauses[] = "`id_passport_no` LIKE :id_no";
-    $params[':id_no'] = '%' . $idNo . '%';
-}
-if ($accountNo !== '') {
-    $whereClauses[] = "`account_number` LIKE :account_no";
-    $params[':account_no'] = '%' . $accountNo . '%';
-}
+build_multiple_search_clause('owner_name', $ownerName, $whereClauses, $params, 'owner_name');
+build_multiple_search_clause('id_passport_no', $idNo, $whereClauses, $params, 'id_no');
+build_multiple_search_clause('account_number', $accountNo, $whereClauses, $params, 'account_no');
 if ($status !== '') {
     $whereClauses[] = "`status` = :status";
     $params[':status'] = $status;
@@ -41,6 +34,30 @@ if ($status !== '') {
 if ($letter !== '') {
     $whereClauses[] = "`letter_received` = :letter_received";
     $params[':letter_received'] = $letter;
+}
+if ($compilationStart !== '') {
+    $whereClauses[] = "COALESCE(
+        STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
+        STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
+        STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
+        STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
+        STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
+        STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
+        STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
+    ) >= :compilation_start";
+    $params[':compilation_start'] = $compilationStart;
+}
+if ($compilationEnd !== '') {
+    $whereClauses[] = "COALESCE(
+        STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
+        STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
+        STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
+        STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
+        STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
+        STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
+        STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
+    ) <= :compilation_end";
+    $params[':compilation_end'] = $compilationEnd;
 }
 
 $whereSql = '';
@@ -73,6 +90,7 @@ try {
         'Account Number', 
         'Last Transaction', 
         'Due Amount', 
+        'Compilation Date',
         'Status', 
         'Letter Received', 
         'Letter Date', 
@@ -89,6 +107,7 @@ try {
             $row['account_number'],
             $row['last_transaction'],
             $row['due_amount'],
+            $row['compilation_date'],
             $row['status'],
             $row['letter_received'],
             $row['letter_date'],

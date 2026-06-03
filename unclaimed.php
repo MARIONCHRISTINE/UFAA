@@ -11,6 +11,8 @@ $idNoFilter = trim($_GET['id_no'] ?? '');
 $accountNoFilter = trim($_GET['account_no'] ?? '');
 $statusFilter = 'Unclaimed'; // Force unclaimed
 $letterFilter = trim($_GET['letter'] ?? '');
+$compilationStartFilter = trim($_GET['compilation_start'] ?? '');
+$compilationEndFilter = trim($_GET['compilation_end'] ?? '');
 $page = max(1, intval($_GET['page'] ?? 1));
 $limit = 50;
 $offset = ($page - 1) * $limit;
@@ -20,21 +22,36 @@ $totalPages = 1;
 if ($dbInitialized && $pdo) {
     $whereClauses = ["`status` = 'Unclaimed'"];
     $params = [];
-    if ($ownerNameFilter !== '') {
-        $whereClauses[] = "`owner_name` LIKE :owner_name";
-        $params[':owner_name'] = '%' . $ownerNameFilter . '%';
-    }
-    if ($idNoFilter !== '') {
-        $whereClauses[] = "`id_passport_no` LIKE :id_no";
-        $params[':id_no'] = '%' . $idNoFilter . '%';
-    }
-    if ($accountNoFilter !== '') {
-        $whereClauses[] = "`account_number` LIKE :account_no";
-        $params[':account_no'] = '%' . $accountNoFilter . '%';
-    }
+    build_multiple_search_clause('owner_name', $ownerNameFilter, $whereClauses, $params, 'owner_name');
+    build_multiple_search_clause('id_passport_no', $idNoFilter, $whereClauses, $params, 'id_no');
+    build_multiple_search_clause('account_number', $accountNoFilter, $whereClauses, $params, 'account_no');
     if ($letterFilter !== '') {
         $whereClauses[] = "`letter_received` = :letter_received";
         $params[':letter_received'] = $letterFilter;
+    }
+    if ($compilationStartFilter !== '') {
+        $whereClauses[] = "COALESCE(
+            STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
+            STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
+            STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
+            STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
+            STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
+            STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
+            STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
+        ) >= :compilation_start";
+        $params[':compilation_start'] = $compilationStartFilter;
+    }
+    if ($compilationEndFilter !== '') {
+        $whereClauses[] = "COALESCE(
+            STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
+            STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
+            STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
+            STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
+            STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
+            STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
+            STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
+        ) <= :compilation_end";
+        $params[':compilation_end'] = $compilationEndFilter;
     }
     $whereSql = 'WHERE ' . implode(' AND ', $whereClauses);
     $countQuery = $pdo->prepare("SELECT COUNT(*) FROM `unclaimed_assets` $whereSql");
@@ -62,15 +79,15 @@ require_once 'includes/layout.php';
         <div class="filters-grid">
             <div class="filter-group">
                 <label>Owner Name</label>
-                <input type="text" name="owner_name" value="<?= htmlspecialchars($ownerNameFilter) ?>" placeholder="Search owner name..." class="filter-input">
+                <textarea name="owner_name" rows="1" placeholder="Search name(s)... (comma/newline separated)" class="filter-input"><?= htmlspecialchars($ownerNameFilter) ?></textarea>
             </div>
             <div class="filter-group">
                 <label>ID / Passport No</label>
-                <input type="text" name="id_no" value="<?= htmlspecialchars($idNoFilter) ?>" placeholder="Search ID/Passport..." class="filter-input">
+                <textarea name="id_no" rows="1" placeholder="Search ID/Passport(s)... (comma/newline separated)" class="filter-input"><?= htmlspecialchars($idNoFilter) ?></textarea>
             </div>
             <div class="filter-group">
                 <label>Account Number</label>
-                <input type="text" name="account_no" value="<?= htmlspecialchars($accountNoFilter) ?>" placeholder="Search account number..." class="filter-input">
+                <textarea name="account_no" rows="1" placeholder="Search account(s)... (comma/newline separated)" class="filter-input"><?= htmlspecialchars($accountNoFilter) ?></textarea>
             </div>
             <div class="filter-group">
                 <label>Letter Received</label>
@@ -80,6 +97,14 @@ require_once 'includes/layout.php';
                     <option value="No" <?= $letterFilter === 'No' ? 'selected' : '' ?>>No Letter Received</option>
                 </select>
             </div>
+            <div class="filter-group">
+                <label>Compilation Start</label>
+                <input type="date" name="compilation_start" value="<?= htmlspecialchars($compilationStartFilter) ?>" class="filter-input">
+            </div>
+            <div class="filter-group">
+                <label>Compilation End</label>
+                <input type="date" name="compilation_end" value="<?= htmlspecialchars($compilationEndFilter) ?>" class="filter-input">
+            </div>
         </div>
 
         <div class="filters-actions">
@@ -87,13 +112,13 @@ require_once 'includes/layout.php';
                 <button type="submit" class="btn-filter">
                     <i class="fa-solid fa-filter"></i> Apply Filters
                 </button>
-                <?php if ($ownerNameFilter !== '' || $idNoFilter !== '' || $accountNoFilter !== '' || $letterFilter !== ''): ?>
+                <?php if ($ownerNameFilter !== '' || $idNoFilter !== '' || $accountNoFilter !== '' || $letterFilter !== '' || $compilationStartFilter !== '' || $compilationEndFilter !== ''): ?>
                     <a href="unclaimed.php" class="btn-reset">
                         <i class="fa-solid fa-arrows-rotate"></i> Reset
                     </a>
                 <?php endif; ?>
             </div>
-            <a href="ajax/export.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=Unclaimed&letter=<?= urlencode($letterFilter) ?>" class="btn-export" title="Download matching assets to Excel">
+            <a href="ajax/export.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=Unclaimed&letter=<?= urlencode($letterFilter) ?>&compilation_start=<?= urlencode($compilationStartFilter) ?>&compilation_end=<?= urlencode($compilationEndFilter) ?>" class="btn-export" title="Download matching assets to Excel">
                 <i class="fa-solid fa-file-excel"></i> Download Excel
             </a>
         </div>
@@ -108,6 +133,7 @@ require_once 'includes/layout.php';
                     <th>ID / Passport No</th>
                     <th>Account Number</th>
                     <th>Due Amount</th>
+                    <th>Compilation Date</th>
                     <th style="text-align: center; width: 130px;">Status</th>
                     <th style="text-align: center; width: 130px;">Letter Received</th>
                     <th style="width: 250px;">Letter Date &amp; File</th>
@@ -115,7 +141,7 @@ require_once 'includes/layout.php';
             </thead>
             <tbody>
                 <?php if (empty($assets)): ?>
-                    <tr><td colspan="8"><div class="empty-state"><p>No unclaimed records found matching search or filter parameters.</p></div></td></tr>
+                    <tr><td colspan="9"><div class="empty-state"><p>No unclaimed records found matching search or filter parameters.</p></div></td></tr>
                 <?php else: ?>
                     <?php $itemIndex = $offset + 1; foreach ($assets as $asset): ?>
                         <tr id="row-<?= $asset['record_id'] ?>">
@@ -124,6 +150,21 @@ require_once 'includes/layout.php';
                             <td><?= htmlspecialchars($asset['id_passport_no'] ?? '-') ?></td>
                             <td><?= htmlspecialchars($asset['account_number'] ?? '-') ?></td>
                             <td class="col-amount"><?= htmlspecialchars($asset['due_amount'] ?? '-') ?></td>
+                            <td>
+                                <div class="date-input-container">
+                                    <input 
+                                        type="text" 
+                                        value="<?= htmlspecialchars($asset['compilation_date'] ?? '') ?>" 
+                                        data-original="<?= htmlspecialchars($asset['compilation_date'] ?? '') ?>" 
+                                        data-field="compilation_date"
+                                        class="date-edit-input" 
+                                        placeholder="Enter Date..." 
+                                        onblur="handleDateBlur(this, <?= $asset['record_id'] ?>)" 
+                                        onkeydown="handleDateKey(event, this, <?= $asset['record_id'] ?>)"
+                                    >
+                                    <i class="date-save-indicator fa-solid fa-pen"></i>
+                                </div>
+                            </td>
                             <td style="text-align: center;">
                                 <span 
                                     id="badge-status-<?= $asset['record_id'] ?>" 
@@ -172,7 +213,7 @@ require_once 'includes/layout.php';
             </div>
             <div class="pagination-buttons">
                 <!-- Prev button -->
-                <a href="unclaimed.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= max(1, $page - 1) ?>#records-section" 
+                <a href="unclaimed.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&letter=<?= urlencode($letterFilter) ?>&compilation_start=<?= urlencode($compilationStartFilter) ?>&compilation_end=<?= urlencode($compilationEndFilter) ?>&page=<?= max(1, $page - 1) ?>#records-section" 
                    class="btn-page btn-page-nav <?= $page === 1 ? 'disabled' : '' ?>">
                     <i class="fa-solid fa-chevron-left"></i> Previous
                 </a>
@@ -184,14 +225,14 @@ require_once 'includes/layout.php';
                 
                 for ($i = $startPage; $i <= $endPage; $i++): 
                 ?>
-                    <a href="unclaimed.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= $i ?>#records-section" 
+                    <a href="unclaimed.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&letter=<?= urlencode($letterFilter) ?>&compilation_start=<?= urlencode($compilationStartFilter) ?>&compilation_end=<?= urlencode($compilationEndFilter) ?>&page=<?= $i ?>#records-section" 
                        class="btn-page <?= $i === $page ? 'active' : '' ?>">
                         <?= $i ?>
                     </a>
                 <?php endfor; ?>
 
                 <!-- Next button -->
-                <a href="unclaimed.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&letter=<?= urlencode($letterFilter) ?>&page=<?= min($totalPages, $page + 1) ?>#records-section" 
+                <a href="unclaimed.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&letter=<?= urlencode($letterFilter) ?>&compilation_start=<?= urlencode($compilationStartFilter) ?>&compilation_end=<?= urlencode($compilationEndFilter) ?>&page=<?= min($totalPages, $page + 1) ?>#records-section" 
                    class="btn-page btn-page-nav <?= $page === $totalPages ? 'disabled' : '' ?>">
                     Next <i class="fa-solid fa-chevron-right"></i>
                 </a>

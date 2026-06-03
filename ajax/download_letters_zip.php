@@ -21,17 +21,10 @@ $status    = trim($_GET['status'] ?? '');
 $whereClauses = ["`letter_received` = 'Yes'", "`letter_file_path` IS NOT NULL", "`letter_file_path` != ''"];
 $params = [];
 
-if ($ownerName !== '') {
-    $whereClauses[] = "`owner_name` LIKE :owner_name";
-    $params[':owner_name'] = '%' . $ownerName . '%';
-}
-if ($idNo !== '') {
-    $whereClauses[] = "`id_passport_no` LIKE :id_no";
-    $params[':id_no'] = '%' . $idNo . '%';
-}
-if ($accountNo !== '') {
-    $whereClauses[] = "`account_number` LIKE :account_no";
-    $params[':account_no'] = '%' . $accountNo . '%';
+if (function_exists('build_multiple_search_clause')) {
+    build_multiple_search_clause('owner_name', $ownerName, $whereClauses, $params, 'owner_name');
+    build_multiple_search_clause('id_passport_no', $idNo, $whereClauses, $params, 'id_no');
+    build_multiple_search_clause('account_number', $accountNo, $whereClauses, $params, 'account_no');
 }
 if ($status !== '') {
     $whereClauses[] = "`status` = :status";

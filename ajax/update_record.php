@@ -35,7 +35,7 @@ if (!$recordId || !is_numeric($recordId)) {
 }
 
 // Strict field whitelist to completely prevent SQL injection
-$allowedFields = ['status', 'letter_received', 'letter_date'];
+$allowedFields = ['status', 'letter_received', 'letter_date', 'compilation_date'];
 if (!in_array($fieldName, $allowedFields)) {
     http_response_code(400);
     echo json_encode([
@@ -64,7 +64,7 @@ if ($fieldName === 'status') {
         ]);
         exit;
     }
-} elseif ($fieldName === 'letter_date') {
+} elseif ($fieldName === 'letter_date' || $fieldName === 'compilation_date') {
     // If date string is entirely empty, store it as NULL in the database
     $newValue = trim($newValue);
     if ($newValue === '') {
@@ -88,7 +88,8 @@ try {
         $friendlyFieldNames = [
             'status' => 'Claiming status',
             'letter_received' => 'Letter Received status',
-            'letter_date' => 'Letter date detail'
+            'letter_date' => 'Letter date detail',
+            'compilation_date' => 'Compilation date'
         ];
         
         $displayValue = $newValue === null ? 'Cleared' : $newValue;

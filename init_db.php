@@ -35,6 +35,7 @@ try {
             `account_number` TEXT NULL,
             `last_transaction` TEXT NULL,
             `due_amount` TEXT NULL,
+            `compilation_date` TEXT NULL,
             `status` VARCHAR(50) DEFAULT 'Unclaimed',
             `letter_received` VARCHAR(10) DEFAULT 'No',
             `letter_date` TEXT NULL,
@@ -77,6 +78,11 @@ try {
     if (!in_array('letter_file_path', $existingColumns)) {
         $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `letter_file_path` TEXT NULL AFTER `letter_date`");
         $migrationsDone[] = 'Added "letter_file_path" column';
+    }
+
+    if (!in_array('compilation_date', $existingColumns)) {
+        $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `compilation_date` TEXT NULL AFTER `due_amount`");
+        $migrationsDone[] = 'Added "compilation_date" column';
     }
 
     $msg = 'Database and tables initialized successfully.';

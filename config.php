@@ -49,3 +49,34 @@ function get_db_connection() {
         return null;
     }
 }
+
+/**
+ * Splits a search string by commas, semicolons, or newlines, and builds
+ * an OR-based PDO parameterized SQL clause for the specified field name.
+ */
+function build_multiple_search_clause($fieldName, $userInput, &$whereClauses, &$params, $paramPrefix) {
+    if ($userInput === '') {
+        return;
+    }
+    // Split by commas, semicolons, or newlines
+    $terms = preg_split('/[\n\r,;]+/', $userInput);
+    $subClauses = [];
+    $index = 0;
+    foreach ($terms as $term) {
+        $term = trim($term);
+        if ($term !== '') {
+            $paramKey = ':' . $paramPrefix . '_' . $index;
+            $subClauses[] = "`$fieldName` LIKE $paramKey";
+            $params[$paramKey] = '%' . $term . '%';
+            $index++;
+        }
+    }
+    if (!empty($subClauses)) {
+        if (count($subClauses) === 1) {
+            $whereClauses[] = $subClauses[0];
+        } else {
+            $whereClauses[] = '(' . implode(' OR ', $subClauses) . ')';
+        }
+    }
+}
+

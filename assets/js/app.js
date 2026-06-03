@@ -290,7 +290,9 @@ function saveDateInline(input, recordId, newVal) {
         indicator.className = 'date-save-indicator fa-solid fa-spinner fa-spin';
     }
 
-    updateRecord(recordId, 'letter_date', newVal, (success, data) => {
+    const fieldName = input.getAttribute('data-field') || 'letter_date';
+
+    updateRecord(recordId, fieldName, newVal, (success, data) => {
         if (success) {
             input.setAttribute('data-original', newVal);
             if (indicator) {
@@ -516,3 +518,15 @@ function uploadLetter(recordId, inputElement) {
     // Clear input
     inputElement.value = '';
 }
+
+// 8. Textarea Auto-submit on Enter key
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('form.filters-panel textarea').forEach(textarea => {
+        textarea.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                this.form.submit();
+            }
+        });
+    });
+});
