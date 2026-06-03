@@ -48,3 +48,11 @@ CREATE TABLE IF NOT EXISTS `uploaded_files` (
     `file_name`   VARCHAR(500) NOT NULL UNIQUE,
     `uploaded_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 1. Add the compilation_date column immediately after due_amount
+ALTER TABLE `unclaimed_assets` 
+ADD COLUMN `compilation_date` TEXT NULL AFTER `due_amount`;
+
+-- 2. Add the composite index to speed up the smart re-upload lookups on millions of rows
+ALTER TABLE `unclaimed_assets` 
+ADD INDEX `idx_lookup` (`owner_name`(100), `id_passport_no`(100));
