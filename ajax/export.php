@@ -24,9 +24,18 @@ $compilationEnd     = trim($_GET['compilation_end'] ?? '');
 $whereClauses = [];
 $params = [];
 
-build_multiple_search_clause('owner_name', $ownerName, $whereClauses, $params, 'owner_name');
-build_multiple_search_clause('id_passport_no', $idNo, $whereClauses, $params, 'id_no');
-build_multiple_search_clause('account_number', $accountNo, $whereClauses, $params, 'account_no');
+if ($ownerName !== '') {
+    $whereClauses[] = "`owner_name` IS NOT NULL AND TRIM(`owner_name`) != ''";
+    build_multiple_search_clause('owner_name', $ownerName, $whereClauses, $params, 'owner_name');
+}
+if ($idNo !== '') {
+    $whereClauses[] = "`id_passport_no` IS NOT NULL AND TRIM(`id_passport_no`) != ''";
+    build_multiple_search_clause('id_passport_no', $idNo, $whereClauses, $params, 'id_no');
+}
+if ($accountNo !== '') {
+    $whereClauses[] = "`account_number` IS NOT NULL AND TRIM(`account_number`) != ''";
+    build_multiple_search_clause('account_number', $accountNo, $whereClauses, $params, 'account_no');
+}
 if ($status !== '') {
     $whereClauses[] = "`status` = :status";
     $params[':status'] = $status;
@@ -49,13 +58,60 @@ if (!empty($whereClauses)) {
     $whereSql = 'WHERE ' . implode(' AND ', $whereClauses);
 }
 
+// 1. Handle JSON Count request
+if (isset($_GET['get_count']) && $_GET['get_count'] == '1') {
+    try {
+        $countQuery = $pdo->prepare("SELECT COUNT(*) FROM `unclaimed_assets` $whereSql");
+        $countQuery->execute($params);
+        $totalCount = (int)$countQuery->fetchColumn();
+        
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'success', 'count' => $totalCount]);
+        exit;
+    } catch (PDOException $e) {
+        header('Content-Type: application/json');
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        exit;
+    }
+}
+
+// 2. Parse pagination chunk options
+$limit = isset($_GET['limit']) ? intval($_GET['limit']) : 0;
+$offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
+
+$limitSql = '';
+if ($limit > 0) {
+    $limitSql = " LIMIT :limit OFFSET :offset";
+}
+
 try {
-    $stmt = $pdo->prepare("SELECT * FROM `unclaimed_assets` $whereSql ORDER BY `record_id` DESC");
-    $stmt->execute($params);
+    $stmt = $pdo->prepare("SELECT * FROM `unclaimed_assets` $whereSql ORDER BY `owner_name` IS NULL ASC, `owner_name` ASC" . $limitSql);
+    
+    // Bind regular query params
+    foreach ($params as $key => $val) {
+        $stmt->bindValue($key, $val);
+    }
+    
+    // Bind limit and offset as integers if specified
+    if ($limit > 0) {
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+    }
+    
+    $stmt->execute();
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Set headers to force download as CSV
-    $filename = "UFAA_Compliance_Export_" . date('Ymd_His') . ".csv";
+    // 3. Handle file naming with parts/chunks
+    $chunkNum = isset($_GET['chunk_num']) ? intval($_GET['chunk_num']) : 0;
+    $totalChunks = isset($_GET['total_chunks']) ? intval($_GET['total_chunks']) : 0;
+    
+    $suffix = '';
+    if ($chunkNum > 0 && $totalChunks > 0) {
+        $suffix = "_Part{$chunkNum}_of_{$totalChunks}";
+    }
+    
+    $filename = "UFAA_Compliance_Export_" . date('Ymd_His') . $suffix . ".csv";
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     

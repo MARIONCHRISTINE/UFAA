@@ -14,17 +14,27 @@ $letterFilter = trim($_GET['letter'] ?? '');
 $compilationStartFilter = trim($_GET['compilation_start'] ?? '');
 $compilationEndFilter = trim($_GET['compilation_end'] ?? '');
 $page = max(1, intval($_GET['page'] ?? 1));
-$limit = 50;
+$limit = 100;
 $offset = ($page - 1) * $limit;
 $assets = [];
 $totalPages = 1;
+$totalFiltered = 0;
 
 if ($dbInitialized && $pdo) {
     $whereClauses = ["`status` = 'Unclaimed'"];
     $params = [];
-    build_multiple_search_clause('owner_name', $ownerNameFilter, $whereClauses, $params, 'owner_name');
-    build_multiple_search_clause('id_passport_no', $idNoFilter, $whereClauses, $params, 'id_no');
-    build_multiple_search_clause('account_number', $accountNoFilter, $whereClauses, $params, 'account_no');
+    if ($ownerNameFilter !== '') {
+        $whereClauses[] = "`owner_name` IS NOT NULL AND TRIM(`owner_name`) != ''";
+        build_multiple_search_clause('owner_name', $ownerNameFilter, $whereClauses, $params, 'owner_name');
+    }
+    if ($idNoFilter !== '') {
+        $whereClauses[] = "`id_passport_no` IS NOT NULL AND TRIM(`id_passport_no`) != ''";
+        build_multiple_search_clause('id_passport_no', $idNoFilter, $whereClauses, $params, 'id_no');
+    }
+    if ($accountNoFilter !== '') {
+        $whereClauses[] = "`account_number` IS NOT NULL AND TRIM(`account_number`) != ''";
+        build_multiple_search_clause('account_number', $accountNoFilter, $whereClauses, $params, 'account_no');
+    }
     if ($letterFilter !== '') {
         $whereClauses[] = "`letter_received` = :letter_received";
         $params[':letter_received'] = $letterFilter;
@@ -43,7 +53,7 @@ if ($dbInitialized && $pdo) {
     $totalFiltered = $countQuery->fetchColumn();
     $totalPages = ceil($totalFiltered / $limit);
 
-    $stmt = $pdo->prepare("SELECT * FROM `unclaimed_assets` $whereSql ORDER BY `record_id` DESC LIMIT :limit OFFSET :offset");
+    $stmt = $pdo->prepare("SELECT * FROM `unclaimed_assets` $whereSql ORDER BY `owner_name` IS NULL ASC, `owner_name` ASC LIMIT :limit OFFSET :offset");
     foreach ($params as $key => $val) { $stmt->bindValue($key, $val); }
     $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
     $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
@@ -102,7 +112,7 @@ require_once 'includes/layout.php';
                     </a>
                 <?php endif; ?>
             </div>
-            <a href="ajax/export.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=Unclaimed&letter=<?= urlencode($letterFilter) ?>&compilation_start=<?= urlencode($compilationStartFilter) ?>&compilation_end=<?= urlencode($compilationEndFilter) ?>" class="btn-export" title="Download matching assets to Excel">
+            <a href="#" onclick="triggerChunkedExport('owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&status=Unclaimed&letter=<?= urlencode($letterFilter) ?>&compilation_start=<?= urlencode($compilationStartFilter) ?>&compilation_end=<?= urlencode($compilationEndFilter) ?>'); return false;" class="btn-export" title="Download matching assets to Excel">
                 <i class="fa-solid fa-file-excel"></i> Download Excel
             </a>
         </div>
@@ -179,32 +189,34 @@ require_once 'includes/layout.php';
 
     <!-- Pagination Controls -->
     <?php if ($totalPages > 1): ?>
+    <?php
+        $paginationBase = 'unclaimed.php?owner_name=' . urlencode($ownerNameFilter)
+            . '&id_no=' . urlencode($idNoFilter)
+            . '&account_no=' . urlencode($accountNoFilter)
+            . '&letter=' . urlencode($letterFilter)
+            . '&compilation_start=' . urlencode($compilationStartFilter)
+            . '&compilation_end=' . urlencode($compilationEndFilter);
+    ?>
         <div class="pagination-row" style="margin-top: 1.5rem;">
             <div class="pagination-info">
-                Showing Page <span><?= $page ?></span> of <span><?= $totalPages ?></span> Pages
+                Showing Page <span><?= $page ?></span> of <span><?= $totalPages ?></span>
+                &nbsp;(<span><?= number_format($totalFiltered) ?></span> records)
             </div>
             <div class="pagination-buttons">
-                <!-- Prev button -->
-                <a href="unclaimed.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&letter=<?= urlencode($letterFilter) ?>&compilation_start=<?= urlencode($compilationStartFilter) ?>&compilation_end=<?= urlencode($compilationEndFilter) ?>&page=<?= max(1, $page - 1) ?>#records-section" 
+                <a href="<?= $paginationBase ?>&page=<?= max(1, $page - 1) ?>#records-section"
                    class="btn-page btn-page-nav <?= $page === 1 ? 'disabled' : '' ?>">
-                    <i class="fa-solid fa-chevron-left"></i> Previous
+                    <i class="fa-solid fa-chevron-left"></i> Prev
                 </a>
 
-                <!-- Page Numbers -->
-                <?php
-                $startPage = max(1, $page - 2);
-                $endPage = min($totalPages, $page + 2);
-                
-                for ($i = $startPage; $i <= $endPage; $i++): 
-                ?>
-                    <a href="unclaimed.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&letter=<?= urlencode($letterFilter) ?>&compilation_start=<?= urlencode($compilationStartFilter) ?>&compilation_end=<?= urlencode($compilationEndFilter) ?>&page=<?= $i ?>#records-section" 
-                       class="btn-page <?= $i === $page ? 'active' : '' ?>">
-                        <?= $i ?>
-                    </a>
-                <?php endfor; ?>
+                <select class="page-jump-select" onchange="window.location.href=this.value+'#records-section'" aria-label="Jump to page">
+                    <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                        <option value="<?= $paginationBase ?>&page=<?= $i ?>" <?= $i === $page ? 'selected' : '' ?>>
+                            Page <?= $i ?>
+                        </option>
+                    <?php endfor; ?>
+                </select>
 
-                <!-- Next button -->
-                <a href="unclaimed.php?owner_name=<?= urlencode($ownerNameFilter) ?>&id_no=<?= urlencode($idNoFilter) ?>&account_no=<?= urlencode($accountNoFilter) ?>&letter=<?= urlencode($letterFilter) ?>&compilation_start=<?= urlencode($compilationStartFilter) ?>&compilation_end=<?= urlencode($compilationEndFilter) ?>&page=<?= min($totalPages, $page + 1) ?>#records-section" 
+                <a href="<?= $paginationBase ?>&page=<?= min($totalPages, $page + 1) ?>#records-section"
                    class="btn-page btn-page-nav <?= $page === $totalPages ? 'disabled' : '' ?>">
                     Next <i class="fa-solid fa-chevron-right"></i>
                 </a>

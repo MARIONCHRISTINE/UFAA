@@ -457,6 +457,11 @@ function uploadExcelFile(file) {
             document.getElementById('upload-approved-view').style.display = 'block';
             document.getElementById('approved-message').innerText = response.message;
 
+            // Auto-reload the page after 1.5 seconds so that the numbers immediately reflect and user can upload another file
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+
         } else if (response.status === 'duplicate') {
             // File already uploaded — show warning and reset to default view
             if (progressContainer) progressContainer.style.display = 'none';
@@ -573,3 +578,153 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// 10. Chunked Excel Export System (Handles millions of rows by auto-separating in blocks of 200,000)
+function showExportProgressModal(totalChunks) {
+    let overlay = document.getElementById('export-progress-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'export-progress-overlay';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        overlay.style.background = 'rgba(0,0,0,0.6)';
+        overlay.style.backdropFilter = 'blur(4px)';
+        overlay.style.display = 'flex';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.zIndex = '99999';
+        overlay.style.opacity = '0';
+        overlay.style.transition = 'opacity 0.3s ease';
+        
+        const card = document.createElement('div');
+        card.style.background = '#ffffff';
+        card.style.borderRadius = '16px';
+        card.style.padding = '2.5rem';
+        card.style.width = '95%';
+        card.style.maxWidth = '460px';
+        card.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
+        card.style.textAlign = 'center';
+        card.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+        
+        card.innerHTML = `
+            <div style="font-size: 3.5rem; color: #10b981; margin-bottom: 1.5rem; animation: pulse 2s infinite;">
+                <i class="fa-solid fa-file-arrow-down"></i>
+            </div>
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 1.25rem; color: #111827;">Exporting Large Dataset</h3>
+            <p id="export-progress-text" style="margin: 0 0 1.5rem 0; font-size: 0.9rem; color: #4b5563; line-height: 1.5;">Preparing your data...</p>
+            <div style="width: 100%; height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden; margin-bottom: 1rem;">
+                <div id="export-progress-bar" style="width: 0%; height: 100%; background: #10b981; border-radius: 999px; transition: width 0.3s ease;"></div>
+            </div>
+            <div id="export-progress-info" style="font-size: 0.8rem; font-weight: 600; color: #6b7280; margin-bottom: 1.5rem;">Part 0 of ${totalChunks}</div>
+            <div style="font-size: 0.8rem; color: #9ca3af; border-top: 1px solid #f3f4f6; padding-top: 1rem;">
+                ⚠️ Please click "Allow" if your browser prompts for multiple file downloads.
+            </div>
+        `;
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+        
+        // Force reflow and add class
+        overlay.offsetHeight;
+        overlay.style.opacity = '1';
+    } else {
+        overlay.style.display = 'flex';
+        overlay.style.opacity = '1';
+        document.getElementById('export-progress-info').innerText = `Part 0 of ${totalChunks}`;
+        document.getElementById('export-progress-bar').style.width = '0%';
+        document.getElementById('export-progress-text').innerText = 'Preparing your data...';
+    }
+}
+
+function updateExportProgress(currentChunk, totalChunks) {
+    const pct = Math.round((currentChunk / totalChunks) * 100);
+    const progressBar = document.getElementById('export-progress-bar');
+    const progressText = document.getElementById('export-progress-text');
+    const progressInfo = document.getElementById('export-progress-info');
+    
+    if (progressBar) progressBar.style.width = `${pct}%`;
+    if (progressText) progressText.innerText = `Downloading Part ${currentChunk} of ${totalChunks} (200,000 rows)...`;
+    if (progressInfo) progressInfo.innerText = `${pct}% Completed`;
+}
+
+function hideExportProgressModal() {
+    const overlay = document.getElementById('export-progress-overlay');
+    if (overlay) {
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+            overlay.style.display = 'none';
+        }, 300);
+    }
+}
+
+function triggerChunkedExport(queryString) {
+    showNotification('success', 'Calculating export size...');
+    
+    fetch(`ajax/export.php?get_count=1&${queryString}`)
+        .then(res => {
+            if (!res.ok) throw new Error('Failed to get export count.');
+            return res.json();
+        })
+        .then(data => {
+            if (data.status !== 'success') {
+                showNotification('error', data.message || 'Error getting export count.');
+                return;
+            }
+            
+            const totalCount = data.count;
+            if (totalCount === 0) {
+                showNotification('error', 'No matching records found to export.');
+                return;
+            }
+            
+            const chunkSize = 200000;
+            if (totalCount <= chunkSize) {
+                // Regular single-file download
+                window.location.href = `ajax/export.php?${queryString}`;
+            } else {
+                // Chunked download
+                const totalChunks = Math.ceil(totalCount / chunkSize);
+                showExportProgressModal(totalChunks);
+                
+                let currentChunk = 0;
+                
+                function downloadNextChunk() {
+                    if (currentChunk < totalChunks) {
+                        const offset = currentChunk * chunkSize;
+                        const chunkNum = currentChunk + 1;
+                        
+                        // Update progress UI
+                        updateExportProgress(chunkNum, totalChunks);
+                        
+                        // Trigger download by creating dynamic link
+                        const downloadUrl = `ajax/export.php?${queryString}&offset=${offset}&limit=${chunkSize}&chunk_num=${chunkNum}&total_chunks=${totalChunks}`;
+                        const link = document.createElement('a');
+                        link.href = downloadUrl;
+                        link.target = '_blank';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        
+                        currentChunk++;
+                        // Delay 1.2 seconds to avoid browser popup/multiple download blocks
+                        setTimeout(downloadNextChunk, 1200);
+                    } else {
+                        // All chunks triggered
+                        setTimeout(() => {
+                            hideExportProgressModal();
+                            showNotification('success', 'All export parts successfully initiated!');
+                        }, 1000);
+                    }
+                }
+                
+                // Start the loop
+                setTimeout(downloadNextChunk, 500);
+            }
+        })
+        .catch(err => {
+            showNotification('error', 'Failed to calculate export size.');
+            console.error(err);
+        });
+}
