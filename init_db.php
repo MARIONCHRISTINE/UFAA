@@ -31,11 +31,11 @@ try {
             `record_id` INT AUTO_INCREMENT PRIMARY KEY,
             `owner_name` TEXT NULL,
             `id_passport_no` TEXT NULL,
-            `date_of_birth` TEXT NULL,
+            `date_of_birth` DATE NULL,
             `account_number` TEXT NULL,
             `last_transaction` TEXT NULL,
             `due_amount` TEXT NULL,
-            `compilation_date` TEXT NULL,
+            `compilation_date` DATE NULL,
             `status` VARCHAR(50) DEFAULT 'Unclaimed',
             `letter_received` VARCHAR(10) DEFAULT 'No',
             `letter_date` TEXT NULL,
@@ -56,33 +56,85 @@ try {
     ");
 
     // 4. Migration Check (Self-Healing): 
-    // If the table already existed but was missing our new letter columns, add them dynamically.
-    $existingColumns = [];
+    // If the table already existed but has old column formats/missing columns, migrate them.
+    $columnTypes = [];
     $columnsQuery = $pdo->query("SHOW COLUMNS FROM `unclaimed_assets`");
     while ($col = $columnsQuery->fetch()) {
-        $existingColumns[] = strtolower($col['Field']);
+        $columnTypes[strtolower($col['Field'])] = strtolower($col['Type']);
     }
 
     $migrationsDone = [];
 
-    if (!in_array('letter_received', $existingColumns)) {
+    // Delete rows without compilation date immediately (as requested)
+    $deletedCount = $pdo->exec("DELETE FROM `unclaimed_assets` WHERE `compilation_date` IS NULL OR TRIM(`compilation_date`) = ''");
+    if ($deletedCount > 0) {
+        $migrationsDone[] = "Removed {$deletedCount} records without a compilation date";
+    }
+
+    if (!array_key_exists('letter_received', $columnTypes)) {
         $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `letter_received` VARCHAR(10) DEFAULT 'No' AFTER `status`");
         $migrationsDone[] = 'Added "letter_received" column';
     }
 
-    if (!in_array('letter_date', $existingColumns)) {
+    if (!array_key_exists('letter_date', $columnTypes)) {
         $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `letter_date` TEXT NULL AFTER `letter_received`");
         $migrationsDone[] = 'Added "letter_date" column';
     }
 
-    if (!in_array('letter_file_path', $existingColumns)) {
+    if (!array_key_exists('letter_file_path', $columnTypes)) {
         $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `letter_file_path` TEXT NULL AFTER `letter_date`");
         $migrationsDone[] = 'Added "letter_file_path" column';
     }
 
-    if (!in_array('compilation_date', $existingColumns)) {
-        $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `compilation_date` TEXT NULL AFTER `due_amount`");
+    if (!array_key_exists('compilation_date', $columnTypes)) {
+        $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `compilation_date` DATE NULL AFTER `due_amount`");
         $migrationsDone[] = 'Added "compilation_date" column';
+    }
+
+    // Convert date_of_birth to DATE type and strip timestamp
+    if (isset($columnTypes['date_of_birth']) && $columnTypes['date_of_birth'] !== 'date') {
+        $pdo->exec("
+            UPDATE `unclaimed_assets`
+            SET `date_of_birth` = DATE_FORMAT(
+                COALESCE(
+                    STR_TO_DATE(`date_of_birth`, '%Y-%m-%d %H:%i:%s'),
+                    STR_TO_DATE(`date_of_birth`, '%Y-%m-%d'),
+                    STR_TO_DATE(`date_of_birth`, '%d/%m/%Y %H:%i:%s'),
+                    STR_TO_DATE(`date_of_birth`, '%d/%m/%Y'),
+                    STR_TO_DATE(`date_of_birth`, '%d-%m-%Y %H:%i:%s'),
+                    STR_TO_DATE(`date_of_birth`, '%d-%m-%Y')
+                ), 
+                '%Y-%m-%d'
+            )
+            WHERE `date_of_birth` IS NOT NULL AND TRIM(`date_of_birth`) <> ''
+        ");
+        $pdo->exec("ALTER TABLE `unclaimed_assets` MODIFY COLUMN `date_of_birth` DATE NULL");
+        $migrationsDone[] = 'Converted "date_of_birth" to DATE and removed timestamps';
+    }
+
+    // Convert compilation_date to DATE type and strip timestamp
+    if (isset($columnTypes['compilation_date']) && $columnTypes['compilation_date'] !== 'date') {
+        $pdo->exec("
+            UPDATE `unclaimed_assets`
+            SET `compilation_date` = DATE_FORMAT(
+                COALESCE(
+                    STR_TO_DATE(`compilation_date`, '%Y-%m-%d %H:%i:%s'),
+                    STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
+                    STR_TO_DATE(`compilation_date`, '%d/%m/%Y %H:%i:%s'),
+                    STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
+                    STR_TO_DATE(`compilation_date`, '%d-%m-%Y %H:%i:%s'),
+                    STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
+                    STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
+                    STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
+                    STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
+                    STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
+                ), 
+                '%Y-%m-%d'
+            )
+            WHERE `compilation_date` IS NOT NULL AND TRIM(`compilation_date`) <> ''
+        ");
+        $pdo->exec("ALTER TABLE `unclaimed_assets` MODIFY COLUMN `compilation_date` DATE NULL");
+        $migrationsDone[] = 'Converted "compilation_date" to DATE and removed timestamps';
     }
 
     $msg = 'Database and tables initialized successfully.';

@@ -75,28 +75,12 @@ if ($dbInitialized && $pdo) {
         }
 
         if ($compilationStartFilter !== '') {
-            $whereClauses[] = "COALESCE(
-                STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
-                STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
-                STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
-                STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
-                STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
-                STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
-                STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
-            ) >= :compilation_start";
+            $whereClauses[] = "`compilation_date` >= :compilation_start";
             $params[':compilation_start'] = $compilationStartFilter;
         }
 
         if ($compilationEndFilter !== '') {
-            $whereClauses[] = "COALESCE(
-                STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
-                STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
-                STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
-                STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
-                STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
-                STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
-                STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
-            ) <= :compilation_end";
+            $whereClauses[] = "`compilation_date` <= :compilation_end";
             $params[':compilation_end'] = $compilationEndFilter;
         }
 
@@ -373,19 +357,7 @@ require_once 'includes/layout.php';
                                         
                                         <!-- Compilation Date -->
                                         <td>
-                                            <div class="date-input-container">
-                                                <input 
-                                                    type="text" 
-                                                    value="<?= htmlspecialchars($asset['compilation_date'] ?? '') ?>"
-                                                    data-original="<?= htmlspecialchars($asset['compilation_date'] ?? '') ?>"
-                                                    data-field="compilation_date"
-                                                    class="date-edit-input" 
-                                                    placeholder="Enter Date..."
-                                                    onblur="handleDateBlur(this, <?= $asset['record_id'] ?>)"
-                                                    onkeydown="handleDateKey(event, this, <?= $asset['record_id'] ?>)"
-                                                >
-                                                <i class="date-save-indicator fa-solid fa-pen"></i>
-                                            </div>
+                                            <?= htmlspecialchars($asset['compilation_date'] ?? '-') ?>
                                         </td>
                                         
                                         <!-- Claiming status toggle -->

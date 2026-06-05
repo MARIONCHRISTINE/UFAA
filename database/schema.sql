@@ -17,11 +17,11 @@ CREATE TABLE IF NOT EXISTS `unclaimed_assets` (
     `record_id`        INT AUTO_INCREMENT PRIMARY KEY,
     `owner_name`       TEXT NULL,
     `id_passport_no`   TEXT NULL,
-    `date_of_birth`    TEXT NULL,
+    `date_of_birth`    DATE NULL,
     `account_number`   TEXT NULL,
     `last_transaction` TEXT NULL,
     `due_amount`       TEXT NULL,
-    `compilation_date` TEXT NULL,
+    `compilation_date` DATE NULL,
     `status`           VARCHAR(50)  DEFAULT 'Unclaimed',
     `letter_received`  VARCHAR(10)  DEFAULT 'No',
     `letter_date`      TEXT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS `unclaimed_assets` (
 --     (Safe to run — only adds if missing)
 -- ============================================================
 ALTER TABLE `unclaimed_assets`
-    ADD COLUMN IF NOT EXISTS `compilation_date` TEXT NULL                  AFTER `due_amount`,
+    ADD COLUMN IF NOT EXISTS `compilation_date` DATE NULL                  AFTER `due_amount`,
     ADD COLUMN IF NOT EXISTS `letter_received`  VARCHAR(10) DEFAULT 'No'  AFTER `status`,
     ADD COLUMN IF NOT EXISTS `letter_date`      TEXT NULL                  AFTER `letter_received`,
     ADD COLUMN IF NOT EXISTS `letter_file_path` TEXT NULL                  AFTER `letter_date`;
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS `uploaded_files` (
 
 -- 1. Add the compilation_date column immediately after due_amount
 ALTER TABLE `unclaimed_assets` 
-ADD COLUMN `compilation_date` TEXT NULL AFTER `due_amount`;
+ADD COLUMN `compilation_date` DATE NULL AFTER `due_amount`;
 
 -- 2. Add the composite index to speed up the smart re-upload lookups on millions of rows
 ALTER TABLE `unclaimed_assets` 

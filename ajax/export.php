@@ -36,27 +36,11 @@ if ($letter !== '') {
     $params[':letter_received'] = $letter;
 }
 if ($compilationStart !== '') {
-    $whereClauses[] = "COALESCE(
-        STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
-        STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
-        STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
-        STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
-        STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
-        STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
-        STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
-    ) >= :compilation_start";
+    $whereClauses[] = "`compilation_date` >= :compilation_start";
     $params[':compilation_start'] = $compilationStart;
 }
 if ($compilationEnd !== '') {
-    $whereClauses[] = "COALESCE(
-        STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
-        STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
-        STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
-        STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
-        STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
-        STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
-        STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
-    ) <= :compilation_end";
+    $whereClauses[] = "`compilation_date` <= :compilation_end";
     $params[':compilation_end'] = $compilationEnd;
 }
 
