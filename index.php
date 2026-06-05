@@ -194,8 +194,12 @@ require_once 'includes/layout.php';
                     <h3>Drag & Drop Compliance Sheet</h3>
                     <p>or <span style="color:var(--airtel-red); font-weight:600;">browse files</span> from your computer</p>
                     <div class="supported-types" style="margin-top:10px;">Supported Formats: Excel (.xlsx · .xls) &amp; CSV (.csv)</div>
+                    <div class="template-download" style="margin-top:18px;" onclick="event.stopPropagation()">
+                        <a href="download_template.php" class="btn-reset" style="padding: 0.45rem 1rem; font-size:0.8rem; border-radius: 8px; display:inline-flex; align-items:center; gap:0.5rem; text-decoration:none;">
+                            <i class="fa-solid fa-download" style="color:var(--airtel-red)"></i> Download Excel/CSV Template
+                        </a>
+                    </div>
                 </div>
-                
                 <input type="file" id="file-input" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)" style="display:none;">
                 
                 <!-- Preview State -->

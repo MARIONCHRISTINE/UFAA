@@ -32,6 +32,10 @@ $activePage = $activePage ?? 'home';
 ══════════════════════════════════════════════════════════ -->
 <header class="top-header">
     <div class="header-brand">
+        <!-- Mobile Hamburger Button -->
+        <button class="mobile-menu-toggle" id="mobile-menu-btn" aria-label="Toggle Menu">
+            <i class="fa-solid fa-bars"></i>
+        </button>
         <div class="brand-logo-icon">U</div>
         <div class="brand-text">
             <h1>UFAA Portal</h1>
