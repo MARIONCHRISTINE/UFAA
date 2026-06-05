@@ -31,7 +31,7 @@ try {
             `record_id` INT AUTO_INCREMENT PRIMARY KEY,
             `owner_name` TEXT NULL,
             `id_passport_no` TEXT NULL,
-            `date_of_birth` DATE NULL,
+            `date_of_birth` TEXT NULL,
             `account_number` TEXT NULL,
             `last_transaction` TEXT NULL,
             `due_amount` TEXT NULL,
@@ -65,10 +65,15 @@ try {
 
     $migrationsDone = [];
 
-    // Delete rows without compilation date immediately (as requested)
-    $deletedCount = $pdo->exec("DELETE FROM `unclaimed_assets` WHERE `compilation_date` IS NULL OR TRIM(`compilation_date`) = ''");
-    if ($deletedCount > 0) {
-        $migrationsDone[] = "Removed {$deletedCount} records without a compilation date";
+    // Delete rows without compilation date immediately (as requested) in batches to avoid lock wait timeout
+    $totalDeleted = 0;
+    do {
+        $deletedCount = $pdo->exec("DELETE FROM `unclaimed_assets` WHERE `compilation_date` IS NULL OR TRIM(`compilation_date`) = '' LIMIT 5000");
+        $totalDeleted += $deletedCount;
+    } while ($deletedCount > 0);
+
+    if ($totalDeleted > 0) {
+        $migrationsDone[] = "Removed {$totalDeleted} records without a compilation date";
     }
 
     if (!array_key_exists('letter_received', $columnTypes)) {
@@ -91,50 +96,38 @@ try {
         $migrationsDone[] = 'Added "compilation_date" column';
     }
 
-    // Convert date_of_birth to DATE type and strip timestamp
-    if (isset($columnTypes['date_of_birth']) && $columnTypes['date_of_birth'] !== 'date') {
-        $pdo->exec("
-            UPDATE `unclaimed_assets`
-            SET `date_of_birth` = DATE_FORMAT(
-                COALESCE(
-                    STR_TO_DATE(`date_of_birth`, '%Y-%m-%d %H:%i:%s'),
-                    STR_TO_DATE(`date_of_birth`, '%Y-%m-%d'),
-                    STR_TO_DATE(`date_of_birth`, '%d/%m/%Y %H:%i:%s'),
-                    STR_TO_DATE(`date_of_birth`, '%d/%m/%Y'),
-                    STR_TO_DATE(`date_of_birth`, '%d-%m-%Y %H:%i:%s'),
-                    STR_TO_DATE(`date_of_birth`, '%d-%m-%Y')
-                ), 
-                '%Y-%m-%d'
-            )
-            WHERE `date_of_birth` IS NOT NULL AND TRIM(`date_of_birth`) <> ''
-        ");
-        $pdo->exec("ALTER TABLE `unclaimed_assets` MODIFY COLUMN `date_of_birth` DATE NULL");
-        $migrationsDone[] = 'Converted "date_of_birth" to DATE and removed timestamps';
-    }
 
-    // Convert compilation_date to DATE type and strip timestamp
+    // Convert compilation_date to DATE type and strip timestamp in batches to avoid lock wait timeout
     if (isset($columnTypes['compilation_date']) && $columnTypes['compilation_date'] !== 'date') {
-        $pdo->exec("
-            UPDATE `unclaimed_assets`
-            SET `compilation_date` = DATE_FORMAT(
-                COALESCE(
-                    STR_TO_DATE(`compilation_date`, '%Y-%m-%d %H:%i:%s'),
-                    STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
-                    STR_TO_DATE(`compilation_date`, '%d/%m/%Y %H:%i:%s'),
-                    STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
-                    STR_TO_DATE(`compilation_date`, '%d-%m-%Y %H:%i:%s'),
-                    STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
-                    STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
-                    STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
-                    STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
-                    STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
-                ), 
-                '%Y-%m-%d'
-            )
-            WHERE `compilation_date` IS NOT NULL AND TRIM(`compilation_date`) <> ''
-        ");
+        $totalUpdated = 0;
+        do {
+            $updatedCount = $pdo->exec("
+                UPDATE `unclaimed_assets`
+                SET `compilation_date` = DATE_FORMAT(
+                    COALESCE(
+                        STR_TO_DATE(`compilation_date`, '%Y-%m-%d %H:%i:%s'),
+                        STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
+                        STR_TO_DATE(`compilation_date`, '%d/%m/%Y %H:%i:%s'),
+                        STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
+                        STR_TO_DATE(`compilation_date`, '%d-%m-%Y %H:%i:%s'),
+                        STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
+                        STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
+                        STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
+                        STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
+                        STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
+                    ), 
+                    '%Y-%m-%d'
+                )
+                WHERE `compilation_date` IS NOT NULL 
+                  AND TRIM(`compilation_date`) <> ''
+                  AND `compilation_date` NOT REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                LIMIT 5000
+            ");
+            $totalUpdated += $updatedCount;
+        } while ($updatedCount > 0);
+
         $pdo->exec("ALTER TABLE `unclaimed_assets` MODIFY COLUMN `compilation_date` DATE NULL");
-        $migrationsDone[] = 'Converted "compilation_date" to DATE and removed timestamps';
+        $migrationsDone[] = "Converted {$totalUpdated} \"compilation_date\" values to DATE and removed timestamps";
     }
 
     $msg = 'Database and tables initialized successfully.';

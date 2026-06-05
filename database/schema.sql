@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS `unclaimed_assets` (
     `record_id`        INT AUTO_INCREMENT PRIMARY KEY,
     `owner_name`       TEXT NULL,
     `id_passport_no`   TEXT NULL,
-    `date_of_birth`    DATE NULL,
+    `date_of_birth`    TEXT NULL,
     `account_number`   TEXT NULL,
     `last_transaction` TEXT NULL,
     `due_amount`       TEXT NULL,
@@ -48,61 +48,83 @@ CREATE TABLE IF NOT EXISTS `uploaded_files` (
     `file_name`   VARCHAR(500) NOT NULL UNIQUE,
     `uploaded_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 1. Add the compilation_date column immediately after due_amount
-ALTER TABLE `unclaimed_assets` 
-ADD COLUMN `compilation_date` DATE NULL AFTER `due_amount`;
-
--- 2. Add the composite index to speed up the smart re-upload lookups on millions of rows
-ALTER TABLE `unclaimed_assets` 
-ADD INDEX `idx_lookup` (`owner_name`(100), `id_passport_no`(100));
+-- 1. Add the composite index safely to speed up the smart re-upload lookups on millions of rows
+DROP PROCEDURE IF EXISTS AddLookupIndex;
+DELIMITER //
+CREATE PROCEDURE AddLookupIndex()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.statistics 
+        WHERE table_schema = DATABASE() 
+          AND table_name = 'unclaimed_assets' 
+          AND index_name = 'idx_lookup'
+    ) THEN
+        ALTER TABLE `unclaimed_assets` ADD INDEX `idx_lookup` (`owner_name`(100), `id_passport_no`(100));
+    END IF;
+END //
+DELIMITER ;
+CALL AddLookupIndex();
+DROP PROCEDURE IF EXISTS AddLookupIndex;
 
 -- ============================================================
 --  5. One-Time Data Cleaning Migration
 --     Run this once on existing databases to:
---       a) Delete rows that have no compilation date
---       b) Strip timestamps from date_of_birth and compilation_date
---       c) Convert both columns to proper DATE type
+--       a) Delete rows that have no compilation date (in batches)
+--       b) Strip timestamps and format compilation_date to YYYY-MM-DD (in batches)
+--       c) Convert the column type to DATE
 -- ============================================================
 
--- a) Delete records that are missing a compilation date
-DELETE FROM `unclaimed_assets`
-WHERE `compilation_date` IS NULL OR TRIM(`compilation_date`) = '';
+-- a) Delete records that are missing a compilation date (batched to prevent Lock Wait Timeout)
+DROP PROCEDURE IF EXISTS BatchDeleteNullCompilationDate;
+DELIMITER //
+CREATE PROCEDURE BatchDeleteNullCompilationDate()
+BEGIN
+    DECLARE rows_affected INT DEFAULT 1;
+    WHILE rows_affected > 0 DO
+        DELETE FROM `unclaimed_assets` 
+        WHERE `compilation_date` IS NULL OR TRIM(`compilation_date`) = '' 
+        LIMIT 10000;
+        SET rows_affected = ROW_COUNT();
+    END WHILE;
+END //
+DELIMITER ;
+CALL BatchDeleteNullCompilationDate();
+DROP PROCEDURE IF EXISTS BatchDeleteNullCompilationDate;
 
--- b) Clean up date_of_birth: strip timestamps and standardize to YYYY-MM-DD
-UPDATE `unclaimed_assets`
-SET `date_of_birth` = DATE_FORMAT(
-    COALESCE(
-        STR_TO_DATE(`date_of_birth`, '%Y-%m-%d %H:%i:%s'),
-        STR_TO_DATE(`date_of_birth`, '%Y-%m-%d'),
-        STR_TO_DATE(`date_of_birth`, '%d/%m/%Y %H:%i:%s'),
-        STR_TO_DATE(`date_of_birth`, '%d/%m/%Y'),
-        STR_TO_DATE(`date_of_birth`, '%d-%m-%Y %H:%i:%s'),
-        STR_TO_DATE(`date_of_birth`, '%d-%m-%Y')
-    ),
-    '%Y-%m-%d'
-)
-WHERE `date_of_birth` IS NOT NULL AND TRIM(`date_of_birth`) <> '';
 
--- c) Clean up compilation_date: strip timestamps and standardize to YYYY-MM-DD
-UPDATE `unclaimed_assets`
-SET `compilation_date` = DATE_FORMAT(
-    COALESCE(
-        STR_TO_DATE(`compilation_date`, '%Y-%m-%d %H:%i:%s'),
-        STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
-        STR_TO_DATE(`compilation_date`, '%d/%m/%Y %H:%i:%s'),
-        STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
-        STR_TO_DATE(`compilation_date`, '%d-%m-%Y %H:%i:%s'),
-        STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
-        STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
-        STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
-        STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
-        STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
-    ),
-    '%Y-%m-%d'
-)
-WHERE `compilation_date` IS NOT NULL AND TRIM(`compilation_date`) <> '';
+-- b) Clean up compilation_date: strip timestamps and standardize to YYYY-MM-DD (batched to prevent Lock Wait Timeout)
+DROP PROCEDURE IF EXISTS BatchUpdateCompilationDate;
+DELIMITER //
+CREATE PROCEDURE BatchUpdateCompilationDate()
+BEGIN
+    DECLARE rows_affected INT DEFAULT 1;
+    WHILE rows_affected > 0 DO
+        UPDATE `unclaimed_assets`
+        SET `compilation_date` = DATE_FORMAT(
+            COALESCE(
+                STR_TO_DATE(`compilation_date`, '%Y-%m-%d %H:%i:%s'),
+                STR_TO_DATE(`compilation_date`, '%Y-%m-%d'),
+                STR_TO_DATE(`compilation_date`, '%d/%m/%Y %H:%i:%s'),
+                STR_TO_DATE(`compilation_date`, '%d/%m/%Y'),
+                STR_TO_DATE(`compilation_date`, '%d-%m-%Y %H:%i:%s'),
+                STR_TO_DATE(`compilation_date`, '%d-%m-%Y'),
+                STR_TO_DATE(`compilation_date`, '%d-%b-%Y'),
+                STR_TO_DATE(`compilation_date`, '%d-%M-%Y'),
+                STR_TO_DATE(`compilation_date`, '%d/%b/%Y'),
+                STR_TO_DATE(`compilation_date`, '%d/%M/%Y')
+            ),
+            '%Y-%m-%d'
+        )
+        WHERE `compilation_date` IS NOT NULL 
+          AND TRIM(`compilation_date`) <> '' 
+          AND `compilation_date` NOT REGEXP '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        LIMIT 10000;
+        SET rows_affected = ROW_COUNT();
+    END WHILE;
+END //
+DELIMITER ;
+CALL BatchUpdateCompilationDate();
+DROP PROCEDURE IF EXISTS BatchUpdateCompilationDate;
 
--- d) Alter column types to DATE (removes timestamp storage permanently)
-ALTER TABLE `unclaimed_assets` MODIFY COLUMN `date_of_birth` DATE NULL;
+-- c) Alter compilation_date column type to DATE (removes timestamp storage permanently)
 ALTER TABLE `unclaimed_assets` MODIFY COLUMN `compilation_date` DATE NULL;

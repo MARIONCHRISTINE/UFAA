@@ -105,7 +105,7 @@ function insertRows(PDO $pdo, array $rows): array
     foreach ($rows as $row) {
         $ownerName       = isset($row[0]) && trim((string)$row[0]) !== '' ? trim((string)$row[0]) : null;
         $idPassportNo    = isset($row[1]) && trim((string)$row[1]) !== '' ? trim((string)$row[1]) : null;
-        $dateOfBirth     = isset($row[2]) && trim((string)$row[2]) !== '' ? cleanUploadedDate($row[2]) : null;
+        $dateOfBirth     = isset($row[2]) && trim((string)$row[2]) !== '' ? trim((string)$row[2]) : null;
         $accountNumber   = isset($row[3]) && trim((string)$row[3]) !== '' ? trim((string)$row[3]) : null;
         $lastTransaction = isset($row[4]) && trim((string)$row[4]) !== '' ? trim((string)$row[4]) : null;
         $dueAmount       = isset($row[5]) && trim((string)$row[5]) !== '' ? trim((string)$row[5]) : null;
