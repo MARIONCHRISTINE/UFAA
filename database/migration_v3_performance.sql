@@ -51,3 +51,50 @@ DELIMITER ;
 
 CALL AddPerformanceIndexes();
 DROP PROCEDURE IF EXISTS AddPerformanceIndexes;
+
+
+
+
+
+
+SQL 1
+
+
+USE `ufaa_db`;
+
+ALTER TABLE `unclaimed_assets`
+    ADD COLUMN IF NOT EXISTS `letter_generated`      VARCHAR(10) DEFAULT 'No' AFTER `status`,
+    ADD COLUMN IF NOT EXISTS `letter_generated_date` DATETIME    NULL         AFTER `letter_generated`;
+
+UPDATE `unclaimed_assets` 
+SET `letter_generated` = 'Yes' 
+WHERE `letter_received` = 'Yes' OR (`letter_file_path` IS NOT NULL AND `letter_file_path` != '');
+
+
+
+ALTER TABLE `unclaimed_assets`
+    ADD COLUMN IF NOT EXISTS `letter_generated`      VARCHAR(10) DEFAULT 'No' AFTER `status`,
+    ADD COLUMN IF NOT EXISTS `letter_generated_date` DATETIME    NULL         AFTER `letter_generated`,
+    ADD COLUMN IF NOT EXISTS `stamped_file_path`     VARCHAR(500) NULL        AFTER `letter_file_path`;
+
+
+
+
+	SQL 2
+
+USE `ufaa_db`;
+
+-- 1. Convert TEXT to VARCHAR(255) for fast RAM indexing
+ALTER TABLE `unclaimed_assets`
+    MODIFY COLUMN `owner_name`      VARCHAR(255) NULL,
+    MODIFY COLUMN `id_passport_no`  VARCHAR(255) NULL,
+    MODIFY COLUMN `account_number`  VARCHAR(255) NULL;
+
+-- 2. Add B-Tree & Full-Text indexes
+ALTER TABLE `unclaimed_assets`
+    ADD INDEX `idx_owner_name` (`owner_name`),
+    ADD INDEX `idx_id_passport` (`id_passport_no`),
+    ADD INDEX `idx_account_no` (`account_number`),
+    ADD INDEX `idx_status` (`status`),
+    ADD INDEX `idx_compilation_date` (`compilation_date`),
+    ADD FULLTEXT INDEX `ft_owner_name` (`owner_name`);
