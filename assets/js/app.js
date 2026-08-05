@@ -491,14 +491,14 @@ function uploadExcelFile(file) {
 // 7. Letter File Upload
 function uploadLetter(recordId, inputElement) {
     if (!inputElement.files || inputElement.files.length === 0) return;
-    
+
     const file = inputElement.files[0];
     const formData = new FormData();
     formData.append('record_id', recordId);
     formData.append('letter_file', file);
-    
-    showNotification('success', 'Uploading letter...');
-    
+
+    showNotification('success', 'Uploading stamped copy...');
+
     fetch('ajax/upload_letter.php', {
         method: 'POST',
         body: formData
@@ -506,21 +506,34 @@ function uploadLetter(recordId, inputElement) {
     .then(res => res.json())
     .then(data => {
         if (data.status === 'success') {
-            showNotification('success', data.message);
-            // Optionally reload to show the view link immediately
-            setTimeout(() => {
-                window.location.hash = 'row-' + recordId;
-                window.location.reload();
-            }, 1000);
+            showNotification('success', 'Stamped copy uploaded successfully!');
+
+            // Dynamically update the View Attached link without reloading
+            const attachArea = document.getElementById('attach-area-' + recordId);
+            if (attachArea && data.file_path) {
+                const oldLink = attachArea.querySelector('.stamped-view-link');
+                if (oldLink) oldLink.remove();
+                const placeholder = attachArea.querySelector('.stamped-view-link-placeholder');
+                if (placeholder) placeholder.remove();
+
+                const link = document.createElement('a');
+                link.href = data.file_path;
+                link.target = '_blank';
+                link.className = 'stamped-view-link';
+                link.title = 'View Stamped/Attached Copy';
+                link.style.cssText = 'font-size:0.82rem; font-weight:700; color:var(--airtel-red); text-decoration:none; display:inline-flex; align-items:center; gap:4px;';
+                link.innerHTML = '<i class="fa-solid fa-file-circle-check"></i> View Stamped Copy';
+                attachArea.appendChild(link);
+            }
         } else {
             showNotification('error', data.message);
         }
     })
-    .catch(err => {
+    .catch(() => {
         showNotification('error', 'Network error during upload.');
     });
-    
-    // Clear input
+
+    // Clear input so same file can be re-selected
     inputElement.value = '';
 }
 

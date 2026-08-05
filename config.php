@@ -44,9 +44,69 @@ function get_db_connection() {
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]
         );
+        ensure_ufaa_columns($pdo);
         return $pdo;
     } catch (PDOException $e) {
         return null;
+    }
+}
+
+/**
+ * Self-healing helper: Ensures required columns & high-performance indexes exist
+ */
+function ensure_ufaa_columns($pdo) {
+    if (!$pdo) return;
+    try {
+        $chk = $pdo->query("SHOW COLUMNS FROM `unclaimed_assets` LIKE 'letter_generated'");
+        if ($chk->rowCount() === 0) {
+            $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `letter_generated` VARCHAR(10) DEFAULT 'No' AFTER `status`");
+        }
+        $chkDate = $pdo->query("SHOW COLUMNS FROM `unclaimed_assets` LIKE 'letter_generated_date'");
+        if ($chkDate->rowCount() === 0) {
+            $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `letter_generated_date` DATETIME NULL AFTER `letter_generated`");
+        }
+        $chkStamped = $pdo->query("SHOW COLUMNS FROM `unclaimed_assets` LIKE 'stamped_file_path'");
+        if ($chkStamped->rowCount() === 0) {
+            $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `stamped_file_path` VARCHAR(500) NULL AFTER `letter_file_path`");
+        }
+
+        // Automatic Column & Index Optimization for Fast Searching (TEXT -> VARCHAR(500))
+        $chkOwnerType = $pdo->query("SHOW COLUMNS FROM `unclaimed_assets` LIKE 'owner_name'")->fetch();
+        if ($chkOwnerType && stripos($chkOwnerType['Type'], 'text') !== false) {
+            @$pdo->exec("ALTER TABLE `unclaimed_assets` MODIFY COLUMN `owner_name` VARCHAR(500) NULL");
+        }
+        $chkIdType = $pdo->query("SHOW COLUMNS FROM `unclaimed_assets` LIKE 'id_passport_no'")->fetch();
+        if ($chkIdType && stripos($chkIdType['Type'], 'text') !== false) {
+            @$pdo->exec("ALTER TABLE `unclaimed_assets` MODIFY COLUMN `id_passport_no` VARCHAR(500) NULL");
+        }
+        $chkAcctType = $pdo->query("SHOW COLUMNS FROM `unclaimed_assets` LIKE 'account_number'")->fetch();
+        if ($chkAcctType && stripos($chkAcctType['Type'], 'text') !== false) {
+            @$pdo->exec("ALTER TABLE `unclaimed_assets` MODIFY COLUMN `account_number` VARCHAR(500) NULL");
+        }
+
+        $indexes = $pdo->query("SHOW INDEX FROM `unclaimed_assets`")->fetchAll();
+        $existingIndexNames = array_column($indexes, 'Key_name');
+
+        if (!in_array('idx_owner_name', $existingIndexNames, true)) {
+            @$pdo->exec("CREATE INDEX `idx_owner_name` ON `unclaimed_assets` (`owner_name`(191))");
+        }
+        if (!in_array('idx_id_passport', $existingIndexNames, true)) {
+            @$pdo->exec("CREATE INDEX `idx_id_passport` ON `unclaimed_assets` (`id_passport_no`(191))");
+        }
+        if (!in_array('idx_account_no', $existingIndexNames, true)) {
+            @$pdo->exec("CREATE INDEX `idx_account_no` ON `unclaimed_assets` (`account_number`(191))");
+        }
+        if (!in_array('idx_status', $existingIndexNames, true)) {
+            @$pdo->exec("CREATE INDEX `idx_status` ON `unclaimed_assets` (`status`)");
+        }
+        if (!in_array('idx_compilation_date', $existingIndexNames, true)) {
+            @$pdo->exec("CREATE INDEX `idx_compilation_date` ON `unclaimed_assets` (`compilation_date`)");
+        }
+        if (!in_array('ft_owner_name', $existingIndexNames, true)) {
+            @$pdo->exec("CREATE FULLTEXT INDEX `ft_owner_name` ON `unclaimed_assets` (`owner_name`)");
+        }
+    } catch (Exception $e) {
+        // Table doesn't exist yet or permission limited
     }
 }
 

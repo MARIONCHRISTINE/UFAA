@@ -132,7 +132,7 @@ try {
         'Due Amount', 
         'Compilation Date',
         'Status', 
-        'Letter Received', 
+        'Letter Issued', 
         'Letter Date', 
         'Uploaded At'
     ]);

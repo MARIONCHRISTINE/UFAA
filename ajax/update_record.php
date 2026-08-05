@@ -35,7 +35,7 @@ if (!$recordId || !is_numeric($recordId)) {
 }
 
 // Strict field whitelist to completely prevent SQL injection
-$allowedFields = ['status', 'letter_received', 'letter_date'];
+$allowedFields = ['status', 'letter_generated', 'letter_received', 'letter_date'];
 if (!in_array($fieldName, $allowedFields)) {
     http_response_code(400);
     echo json_encode([
@@ -47,7 +47,8 @@ if (!in_array($fieldName, $allowedFields)) {
 
 // Field-specific validation
 if ($fieldName === 'status') {
-    if ($newValue !== 'Claimed' && $newValue !== 'Unclaimed') {
+    $validStatuses = ['Unclaimed', 'Letter Generated', 'Submitted', 'Claimed'];
+    if (!in_array($newValue, $validStatuses)) {
         http_response_code(400);
         echo json_encode([
             'status' => 'error',
@@ -55,12 +56,12 @@ if ($fieldName === 'status') {
         ]);
         exit;
     }
-} elseif ($fieldName === 'letter_received') {
+} elseif ($fieldName === 'letter_generated' || $fieldName === 'letter_received') {
     if ($newValue !== 'Yes' && $newValue !== 'No') {
         http_response_code(400);
         echo json_encode([
             'status' => 'error',
-            'message' => 'Invalid letter received value.'
+            'message' => 'Invalid status value.'
         ]);
         exit;
     }
@@ -80,6 +81,12 @@ try {
         ':id'  => (int)$recordId
     ]);
 
+    // Automatically set letter_generated_date if setting letter_generated to Yes
+    if ($fieldName === 'letter_generated' && $newValue === 'Yes') {
+        $stmtDate = $pdo->prepare("UPDATE `unclaimed_assets` SET `letter_generated_date` = NOW() WHERE `record_id` = :id AND `letter_generated_date` IS NULL");
+        $stmtDate->execute([':id' => (int)$recordId]);
+    }
+
     // Check if record exists to determine exact success message
     $chk = $pdo->prepare("SELECT `record_id` FROM `unclaimed_assets` WHERE `record_id` = ?");
     $chk->execute([(int)$recordId]);
@@ -87,6 +94,7 @@ try {
         
         $friendlyFieldNames = [
             'status' => 'Claiming status',
+            'letter_generated' => 'Letter Generated status',
             'letter_received' => 'Letter Received status',
             'letter_date' => 'Letter date detail'
         ];

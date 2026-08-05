@@ -76,8 +76,18 @@ try {
         $migrationsDone[] = "Removed {$totalDeleted} records without a compilation date";
     }
 
+    if (!array_key_exists('letter_generated', $columnTypes)) {
+        $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `letter_generated` VARCHAR(10) DEFAULT 'No' AFTER `status`");
+        $migrationsDone[] = 'Added "letter_generated" column';
+    }
+
+    if (!array_key_exists('letter_generated_date', $columnTypes)) {
+        $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `letter_generated_date` DATETIME NULL AFTER `letter_generated`");
+        $migrationsDone[] = 'Added "letter_generated_date" column';
+    }
+
     if (!array_key_exists('letter_received', $columnTypes)) {
-        $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `letter_received` VARCHAR(10) DEFAULT 'No' AFTER `status`");
+        $pdo->exec("ALTER TABLE `unclaimed_assets` ADD COLUMN `letter_received` VARCHAR(10) DEFAULT 'No' AFTER `letter_generated_date`");
         $migrationsDone[] = 'Added "letter_received" column';
     }
 

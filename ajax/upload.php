@@ -103,12 +103,12 @@ function insertRows(PDO $pdo, array $rows): array
     ");
 
     foreach ($rows as $row) {
-        $ownerName       = isset($row[0]) && trim((string)$row[0]) !== '' ? trim((string)$row[0]) : null;
-        $idPassportNo    = isset($row[1]) && trim((string)$row[1]) !== '' ? trim((string)$row[1]) : null;
-        $dateOfBirth     = isset($row[2]) && trim((string)$row[2]) !== '' ? trim((string)$row[2]) : null;
-        $accountNumber   = isset($row[3]) && trim((string)$row[3]) !== '' ? trim((string)$row[3]) : null;
+        $ownerName       = isset($row[0]) && trim((string)$row[0]) !== '' ? mb_substr(trim((string)$row[0]), 0, 500) : null;
+        $idPassportNo    = isset($row[1]) && trim((string)$row[1]) !== '' ? mb_substr(trim((string)$row[1]), 0, 500) : null;
+        $dateOfBirth     = isset($row[2]) && trim((string)$row[2]) !== '' ? mb_substr(trim((string)$row[2]), 0, 500) : null;
+        $accountNumber   = isset($row[3]) && trim((string)$row[3]) !== '' ? mb_substr(trim((string)$row[3]), 0, 500) : null;
         $lastTransaction = isset($row[4]) && trim((string)$row[4]) !== '' ? trim((string)$row[4]) : null;
-        $dueAmount       = isset($row[5]) && trim((string)$row[5]) !== '' ? trim((string)$row[5]) : null;
+        $dueAmount       = isset($row[5]) && trim((string)$row[5]) !== '' ? mb_substr(trim((string)$row[5]), 0, 500) : null;
         $compilationDate = isset($row[6]) && trim((string)$row[6]) !== '' ? cleanUploadedDate($row[6]) : null;
 
         // Skip completely empty rows

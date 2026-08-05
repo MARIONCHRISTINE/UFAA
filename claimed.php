@@ -9,6 +9,7 @@ try {
 $ownerNameFilter = trim($_GET['owner_name'] ?? '');
 $idNoFilter = trim($_GET['id_no'] ?? '');
 $accountNoFilter = trim($_GET['account_no'] ?? '');
+$amountFilter = trim($_GET['amount'] ?? '');
 $statusFilter = 'Claimed'; // Force claimed
 $letterFilter = trim($_GET['letter'] ?? '');
 $compilationStartFilter = trim($_GET['compilation_start'] ?? '');
@@ -34,6 +35,10 @@ if ($dbInitialized && $pdo) {
     if ($accountNoFilter !== '') {
         $whereClauses[] = "`account_number` IS NOT NULL AND TRIM(`account_number`) != ''";
         build_multiple_search_clause('account_number', $accountNoFilter, $whereClauses, $params, 'account_no');
+    }
+    if ($amountFilter !== '') {
+        $whereClauses[] = "`due_amount` LIKE :amount_filter";
+        $params[':amount_filter'] = '%' . $amountFilter . '%';
     }
     if ($letterFilter !== '') {
         $whereClauses[] = "`letter_received` = :letter_received";
@@ -84,11 +89,15 @@ require_once 'includes/layout.php';
                 <textarea name="account_no" rows="1" placeholder="Search account(s)... (comma/newline separated)" class="filter-input"><?= htmlspecialchars($accountNoFilter) ?></textarea>
             </div>
             <div class="filter-group">
-                <label>Letter Received</label>
+                <label>Amount</label>
+                <input type="text" name="amount" placeholder="e.g. 5000" value="<?= htmlspecialchars($amountFilter) ?>" class="filter-input">
+            </div>
+            <div class="filter-group">
+                <label>Letter Issued</label>
                 <select name="letter" class="filter-input">
                     <option value="">-- All Letters --</option>
-                    <option value="Yes" <?= $letterFilter === 'Yes' ? 'selected' : '' ?>>Letter Received</option>
-                    <option value="No" <?= $letterFilter === 'No' ? 'selected' : '' ?>>No Letter Received</option>
+                    <option value="Yes" <?= $letterFilter === 'Yes' ? 'selected' : '' ?>>Letter Issued</option>
+                    <option value="No" <?= $letterFilter === 'No' ? 'selected' : '' ?>>No Letter Issued</option>
                 </select>
             </div>
             <div class="filter-group">
@@ -129,8 +138,8 @@ require_once 'includes/layout.php';
                     <th>Due Amount</th>
                     <th>Compilation Date</th>
                     <th style="text-align: center; width: 130px;">Status</th>
-                    <th style="text-align: center; width: 130px;">Letter Received</th>
-                    <th style="width: 250px;">Letter Date &amp; File</th>
+                    <th style="text-align: center; width: 160px;">Generated Letter PDF</th>
+                    <th style="width: 220px;">Stamped Copy &amp; Timestamp</th>
                 </tr>
             </thead>
             <tbody>
@@ -157,27 +166,34 @@ require_once 'includes/layout.php';
                                     <i class="fa-solid fa-circle-check"></i> <span>Claimed</span>
                                 </span>
                             </td>
+
+                            <!-- System-Generated Clean PDF (On-the-fly streaming) -->
                             <td style="text-align: center;">
-                                <span 
-                                    id="badge-letter-<?= $asset['record_id'] ?>" 
-                                    class="status-badge letter-<?= strtolower($asset['letter_received']) ?>" 
-                                    onclick="toggleLetterReceived(<?= $asset['record_id'] ?>, '<?= $asset['letter_received'] ?>')"
-                                    title="Click to toggle letter received"
-                                >
-                                    <?= $asset['letter_received'] === 'Yes' ? '<i class="fa-solid fa-envelope-open-text"></i> <span>Yes</span>' : '<i class="fa-solid fa-envelope"></i> <span>No</span>' ?>
-                                </span>
+                                <a href="view_letter.php?id=<?= $asset['record_id'] ?>" target="_blank" class="btn-pdf-gen" title="View & Print Official Holder Confirmation Letter">
+                                    <i class="fa-solid fa-print"></i> View / Print Letter
+                                </a>
                             </td>
+
+                            <!-- Stamped Copy Attachment & Generated Timestamp -->
                             <td>
-                                <div class="letter-actions">
-                                    <div class="date-input-container">
-                                        <input type="text" value="<?= htmlspecialchars($asset['letter_date'] ?? '') ?>" data-original="<?= htmlspecialchars($asset['letter_date'] ?? '') ?>" class="date-edit-input" placeholder="Enter Date..." onblur="handleDateBlur(this, <?= $asset['record_id'] ?>)" onkeydown="handleDateKey(event, this, <?= $asset['record_id'] ?>)">
-                                        <i class="date-save-indicator fa-solid fa-pen"></i>
+                                <div class="letter-actions" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                    <div id="attach-area-<?= $asset['record_id'] ?>" style="display:flex; align-items:center; gap:6px;">
+                                        <button class="btn-upload-letter" onclick="document.getElementById('letter-upload-<?= $asset['record_id'] ?>').click()" title="Attach or Replace Stamped/Scanned Copy"><i class="fa-solid fa-paperclip"></i></button>
+                                        <?php if (!empty($asset['stamped_file_path'])): ?>
+                                            <a href="<?= htmlspecialchars($asset['stamped_file_path']) ?>" target="_blank" class="stamped-view-link" style="font-size:0.82rem; font-weight:700; color:var(--airtel-red); text-decoration:none; display:inline-flex; align-items:center; gap:4px;" title="View Stamped/Attached Copy">
+                                                <i class="fa-solid fa-file-circle-check"></i> View Stamped Copy
+                                            </a>
+                                        <?php else: ?>
+                                            <span class="stamped-view-link-placeholder" style="font-size:0.75rem; color:#94a3b8; font-style:italic;">No Stamped Copy</span>
+                                        <?php endif; ?>
                                     </div>
-                                    <button class="btn-upload-letter" onclick="document.getElementById('letter-upload-<?= $asset['record_id'] ?>').click()"><i class="fa-solid fa-paperclip"></i></button>
-                                    <input type="file" id="letter-upload-<?= $asset['record_id'] ?>" style="display:none;" onchange="uploadLetter(<?= $asset['record_id'] ?>, this)">
-                                    <?php if (!empty($asset['letter_file_path'])): ?>
-                                        <a href="<?= htmlspecialchars($asset['letter_file_path']) ?>" download class="letter-file-link"><i class="fa-solid fa-download"></i> Download</a>
+                                    <?php if (!empty($asset['letter_generated_date'])): ?>
+                                        <div style="font-size:0.75rem; color:#475569; background:#f1f5f9; padding:2px 7px; border-radius:4px; display:inline-flex; align-items:center; gap:4px; border:1px solid #e2e8f0;" title="Letter Generated Timestamp">
+                                            <i class="fa-solid fa-clock" style="color:var(--airtel-red); font-size:0.7rem;"></i>
+                                            <?= htmlspecialchars(date('d M Y, H:i', strtotime($asset['letter_generated_date']))) ?>
+                                        </div>
                                     <?php endif; ?>
+                                    <input type="file" id="letter-upload-<?= $asset['record_id'] ?>" style="display:none;" onchange="uploadLetter(<?= $asset['record_id'] ?>, this)">
                                 </div>
                             </td>
                         </tr>

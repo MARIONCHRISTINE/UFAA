@@ -32,12 +32,13 @@ try {
 $totalAssets = 0;
 $totalUnclaimed = 0;
 $totalClaimed = 0;
-$totalLettersReceived = 0;
+$totalLettersGenerated = 0;
 
 // Pagination and Search Params
 $ownerNameFilter = trim($_GET['owner_name'] ?? '');
 $idNoFilter = trim($_GET['id_no'] ?? '');
 $accountNoFilter = trim($_GET['account_no'] ?? '');
+$amountFilter = trim($_GET['amount'] ?? '');
 $statusFilter = trim($_GET['status'] ?? '');
 $letterFilter = trim($_GET['letter'] ?? '');
 $compilationStartFilter = trim($_GET['compilation_start'] ?? '');
@@ -54,7 +55,7 @@ if ($dbInitialized && $pdo) {
         $totalAssets = $pdo->query("SELECT COUNT(*) FROM `unclaimed_assets`")->fetchColumn();
         $totalUnclaimed = $pdo->query("SELECT COUNT(*) FROM `unclaimed_assets` WHERE `status` = 'Unclaimed'")->fetchColumn();
         $totalClaimed = $pdo->query("SELECT COUNT(*) FROM `unclaimed_assets` WHERE `status` = 'Claimed'")->fetchColumn();
-        $totalLettersReceived = $pdo->query("SELECT COUNT(*) FROM `unclaimed_assets` WHERE `letter_received` = 'Yes'")->fetchColumn();
+        $totalLettersGenerated = $pdo->query("SELECT COUNT(*) FROM `unclaimed_assets` WHERE `letter_generated` = 'Yes' OR `letter_received` = 'Yes'")->fetchColumn();
 
         // Build paginated query
         $whereClauses = [];
@@ -72,6 +73,11 @@ if ($dbInitialized && $pdo) {
         if ($accountNoFilter !== '') {
             $whereClauses[] = "`account_number` IS NOT NULL AND TRIM(`account_number`) != ''";
             build_multiple_search_clause('account_number', $accountNoFilter, $whereClauses, $params, 'account_no');
+        }
+
+        if ($amountFilter !== '') {
+            $whereClauses[] = "`due_amount` LIKE :amount_filter";
+            $params[':amount_filter'] = '%' . $amountFilter . '%';
         }
 
         if ($statusFilter !== '') {
@@ -184,11 +190,11 @@ require_once 'includes/layout.php';
 
                 <div class="stat-card">
                     <div class="stat-info">
-                        <h3>Letters Received</h3>
-                        <div class="stat-number" id="stat-letters" style="color: #0ea5e9;"><?= number_format($totalLettersReceived) ?></div>
+                        <h3>Holder Letters Issued</h3>
+                        <div class="stat-number" id="stat-letters" style="color: #0ea5e9;"><?= number_format($totalLettersGenerated) ?></div>
                     </div>
                     <div class="stat-icon letter-yes">
-                        <i class="fa-solid fa-envelope-open-text"></i>
+                        <i class="fa-solid fa-file-pdf"></i>
                     </div>
                 </div>
 
@@ -271,6 +277,10 @@ require_once 'includes/layout.php';
                             <textarea name="account_no" rows="1" placeholder="Search account(s)... (comma/newline separated)" class="filter-input"><?= htmlspecialchars($accountNoFilter) ?></textarea>
                         </div>
                         <div class="filter-group">
+                            <label>Amount</label>
+                            <input type="text" name="amount" placeholder="e.g. 5000" value="<?= htmlspecialchars($amountFilter) ?>" class="filter-input">
+                        </div>
+                        <div class="filter-group">
                             <label>Claim Status</label>
                             <select name="status" class="filter-input">
                                 <option value="">-- All Statuses --</option>
@@ -279,11 +289,11 @@ require_once 'includes/layout.php';
                             </select>
                         </div>
                         <div class="filter-group">
-                            <label>Letter Received</label>
+                            <label>Letter Issued</label>
                             <select name="letter" class="filter-input">
                                 <option value="">-- All Letters --</option>
-                                <option value="Yes" <?= $letterFilter === 'Yes' ? 'selected' : '' ?>>Letter Received</option>
-                                <option value="No" <?= $letterFilter === 'No' ? 'selected' : '' ?>>No Letter Received</option>
+                                <option value="Yes" <?= $letterFilter === 'Yes' ? 'selected' : '' ?>>Letter Issued</option>
+                                <option value="No" <?= $letterFilter === 'No' ? 'selected' : '' ?>>No Letter Issued</option>
                             </select>
                         </div>
                         <div class="filter-group">
@@ -321,20 +331,19 @@ require_once 'includes/layout.php';
                                 <th style="width: 50px;">#</th>
                                 <th>Owner Name</th>
                                 <th>ID / Passport No</th>
-                                <th>Date of Birth</th>
                                 <th>Account Number</th>
                                 <th>Last Transaction</th>
                                 <th>Due Amount</th>
                                 <th>Compilation Date</th>
                                 <th style="text-align: center; width: 130px;">Status</th>
-                                <th style="text-align: center; width: 130px;">Letter Received</th>
-                                <th style="width: 250px;">Letter Date &amp; File</th>
+                                <th style="text-align: center; width: 160px;">Generated Letter PDF</th>
+                                <th style="width: 220px;">Stamped Copy &amp; Timestamp</th>
                             </tr>
                         </thead>
                         <tbody id="assets-tbody">
                             <?php if (empty($assets)): ?>
                                 <tr>
-                                    <td colspan="11">
+                                    <td colspan="10">
                                         <div class="empty-state">
                                             <i class="fa-solid fa-folder-open"></i>
                                             <p>No asset records found matching search or filter parameters.</p>
@@ -343,95 +352,66 @@ require_once 'includes/layout.php';
                                 </tr>
                             <?php else: ?>
                                 <?php 
-                                // Dynamic index sequential mapping relative to current page count
                                 $itemIndex = $offset + 1; 
                                 foreach ($assets as $asset): 
+                                    $hasLetter = (!empty($asset['letter_generated']) && $asset['letter_generated'] === 'Yes') || (!empty($asset['letter_file_path']));
                                 ?>
                                     <tr id="row-<?= $asset['record_id'] ?>">
-                                        <!-- Sequential Item Count -->
                                         <td class="col-item-no"><?= $itemIndex++ ?></td>
-                                        
-                                        <!-- Owner name -->
                                         <td class="col-owner"><?= $asset['owner_name'] !== null ? htmlspecialchars($asset['owner_name']) : '<span class="empty-field">Not Provided</span>' ?></td>
-                                        
-                                        <!-- ID / Passport / NSSF -->
                                         <td><?= $asset['id_passport_no'] !== null ? htmlspecialchars($asset['id_passport_no']) : '<span class="empty-field">-</span>' ?></td>
-                                        
-                                        <!-- DOB -->
-                                        <td><?= $asset['date_of_birth'] !== null ? htmlspecialchars($asset['date_of_birth']) : '<span class="empty-field">-</span>' ?></td>
-                                        
-                                        <!-- Account Number -->
                                         <td><?= $asset['account_number'] !== null ? htmlspecialchars($asset['account_number']) : '<span class="empty-field">-</span>' ?></td>
-                                        
-                                        <!-- Last Transaction string -->
                                         <td><?= $asset['last_transaction'] !== null ? htmlspecialchars($asset['last_transaction']) : '<span class="empty-field">-</span>' ?></td>
-                                        
-                                        <!-- Due amount string -->
                                         <td class="col-amount"><?= $asset['due_amount'] !== null ? htmlspecialchars($asset['due_amount']) : '<span class="empty-field">-</span>' ?></td>
+                                        <td><?= htmlspecialchars($asset['compilation_date'] ?? '-') ?></td>
                                         
-                                        <!-- Compilation Date -->
-                                        <td>
-                                            <?= htmlspecialchars($asset['compilation_date'] ?? '-') ?>
-                                        </td>
-                                        
-                                        <!-- Claiming status toggle -->
+                                        <!-- Claim Status Badge -->
                                         <td style="text-align: center;">
                                             <span 
                                                 id="badge-status-<?= $asset['record_id'] ?>" 
-                                                class="status-badge <?= strtolower($asset['status']) ?>"
+                                                class="status-badge <?= strtolower(str_replace(' ', '-', $asset['status'])) ?>"
                                                 onclick="toggleClaimStatus(<?= $asset['record_id'] ?>, '<?= $asset['status'] ?>')"
                                                 title="Click to toggle claim status"
                                             >
                                                 <?php if ($asset['status'] === 'Claimed'): ?>
                                                     <i class="fa-solid fa-circle-check"></i> <span>Claimed</span>
+                                                <?php elseif ($asset['status'] === 'Letter Generated'): ?>
+                                                    <i class="fa-solid fa-file-signature"></i> <span>Letter Issued</span>
+                                                <?php elseif ($asset['status'] === 'Submitted'): ?>
+                                                    <i class="fa-solid fa-paper-plane"></i> <span>Submitted</span>
                                                 <?php else: ?>
                                                     <i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>
                                                 <?php endif; ?>
                                             </span>
                                         </td>
 
-                                        <!-- Letter received status toggle -->
+                                        <!-- System-Generated Clean PDF (On-the-fly streaming) -->
                                         <td style="text-align: center;">
-                                            <span 
-                                                id="badge-letter-<?= $asset['record_id'] ?>" 
-                                                class="status-badge letter-<?= strtolower($asset['letter_received']) ?>"
-                                                onclick="toggleLetterReceived(<?= $asset['record_id'] ?>, '<?= $asset['letter_received'] ?>')"
-                                                title="Click to toggle letter received"
-                                            >
-                                                <?php if ($asset['letter_received'] === 'Yes'): ?>
-                                                    <i class="fa-solid fa-envelope-open-text"></i> <span>Yes</span>
-                                                <?php else: ?>
-                                                    <i class="fa-solid fa-envelope"></i> <span>No</span>
-                                                <?php endif; ?>
-                                            </span>
+                                            <a href="view_letter.php?id=<?= $asset['record_id'] ?>" target="_blank" class="btn-pdf-gen" title="View & Print Official Holder Confirmation Letter">
+                                                <i class="fa-solid fa-print"></i> View / Print Letter
+                                            </a>
                                         </td>
 
-                                        <!-- Inline Editable Letter Date Field & File Upload -->
+                                        <!-- Generated Timestamp & Legacy Attachment Upload -->
                                         <td>
-                                            <div class="letter-actions">
-                                                <div class="date-input-container">
-                                                    <input 
-                                                        type="text" 
-                                                        value="<?= htmlspecialchars($asset['letter_date'] ?? '') ?>"
-                                                        data-original="<?= htmlspecialchars($asset['letter_date'] ?? '') ?>"
-                                                        class="date-edit-input" 
-                                                        placeholder="Enter Date..."
-                                                        onblur="handleDateBlur(this, <?= $asset['record_id'] ?>)"
-                                                        onkeydown="handleDateKey(event, this, <?= $asset['record_id'] ?>)"
-                                                    >
-                                                    <i class="date-save-indicator fa-solid fa-pen"></i>
+                                            <div class="letter-actions" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                                <div id="attach-area-<?= $asset['record_id'] ?>" style="display:flex; align-items:center; gap:6px;">
+                                                    <button class="btn-upload-letter" onclick="document.getElementById('letter-upload-<?= $asset['record_id'] ?>').click()" title="Attach or Replace Stamped/Scanned Copy"><i class="fa-solid fa-paperclip"></i></button>
+                                                    <?php if (!empty($asset['stamped_file_path'])): ?>
+                                                        <a href="<?= htmlspecialchars($asset['stamped_file_path']) ?>" target="_blank" class="stamped-view-link" style="font-size:0.82rem; font-weight:700; color:var(--airtel-red); text-decoration:none; display:inline-flex; align-items:center; gap:4px;" title="View Stamped/Attached Copy">
+                                                            <i class="fa-solid fa-file-circle-check"></i> View Stamped Copy
+                                                        </a>
+                                                    <?php else: ?>
+                                                        <span class="stamped-view-link-placeholder" style="font-size:0.75rem; color:#94a3b8; font-style:italic;">No Stamped Copy</span>
+                                                    <?php endif; ?>
                                                 </div>
-                                                
-                                                <button class="btn-upload-letter" onclick="document.getElementById('letter-upload-<?= $asset['record_id'] ?>').click()" title="Upload Letter File">
-                                                    <i class="fa-solid fa-paperclip"></i>
-                                                </button>
-                                                <input type="file" id="letter-upload-<?= $asset['record_id'] ?>" style="display:none;" onchange="uploadLetter(<?= $asset['record_id'] ?>, this)">
-                                                
-                                                <?php if (!empty($asset['letter_file_path'])): ?>
-                                                    <a href="<?= htmlspecialchars($asset['letter_file_path']) ?>" download class="letter-file-link" title="Download Uploaded Letter">
-                                                        <i class="fa-solid fa-download"></i> Download
-                                                    </a>
+                                                <?php if (!empty($asset['letter_generated_date'])): ?>
+                                                    <div style="font-size:0.75rem; color:#475569; background:#f1f5f9; padding:2px 7px; border-radius:4px; display:inline-flex; align-items:center; gap:4px; border:1px solid #e2e8f0;" title="Letter Generated Timestamp">
+                                                        <i class="fa-solid fa-clock" style="color:var(--airtel-red); font-size:0.7rem;"></i>
+                                                        <?= htmlspecialchars(date('d M Y, H:i', strtotime($asset['letter_generated_date']))) ?>
+                                                    </div>
                                                 <?php endif; ?>
+                                                <input type="file" id="letter-upload-<?= $asset['record_id'] ?>" style="display:none;" onchange="uploadLetter(<?= $asset['record_id'] ?>, this)">
                                             </div>
                                         </td>
                                     </tr>

@@ -69,8 +69,9 @@ body {
 
 /* ============================
    HEADER — Bold Airtel Red
+   (Old standalone header — only applies to pages without .top-header)
    ============================ */
-header {
+header:not(.top-header) {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -84,7 +85,7 @@ header {
     overflow: hidden;
 }
 
-header::after {
+header:not(.top-header)::after {
     content: '';
     position: absolute;
     top: -50%;
@@ -666,9 +667,48 @@ tr:hover td {
     border-color: var(--color-rose-border);
 }
 
-.status-badge.letter-no:hover {
-    background: rgba(225, 29, 72, 0.15);
+.status-badge.letter-generated {
+    background: #e0f2fe;
+    color: #0284c7;
+    border-color: #7dd3fc;
+}
+
+.status-badge.letter-generated:hover {
+    background: #bae6fd;
     transform: scale(1.05);
+}
+
+.status-badge.submitted {
+    background: #f3e8ff;
+    color: #7e22ce;
+    border-color: #d8b4fe;
+}
+
+.status-badge.submitted:hover {
+    background: #e9d5ff;
+    transform: scale(1.05);
+}
+
+.btn-pdf-gen {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    background: linear-gradient(135deg, var(--airtel-red), #b30000);
+    color: #ffffff !important;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 6px rgba(237, 28, 36, 0.25);
+    white-space: nowrap;
+}
+
+.btn-pdf-gen:hover {
+    background: linear-gradient(135deg, #cc0000, #990000);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(237, 28, 36, 0.4);
 }
 
 .status-badge i { font-size: 0.72rem; }
@@ -905,17 +945,22 @@ footer p + p {
    SIDEBAR LAYOUT & TOP HEADER
    ============================ */
 
-/* Top Header */
+/* Top Header — explicit resets to prevent old generic `header` rule bleed */
 .top-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 2rem;
+    padding: 0.85rem 2rem;
     background: linear-gradient(135deg, #CC0000 0%, #990000 100%);
-    box-shadow: 0 4px 15px rgba(204, 0, 0, 0.2);
+    box-shadow: 0 4px 20px rgba(204, 0, 0, 0.25);
     color: #ffffff;
     z-index: 210;
     flex-shrink: 0;
+    /* Override any leaking generic header styles */
+    border-radius: 0;
+    margin-bottom: 0;
+    overflow: visible;
+    position: relative;
 }
 
 .top-header .header-brand {
@@ -925,16 +970,25 @@ footer p + p {
 }
 
 .top-header .brand-logo-icon {
-    background: rgba(255, 255, 255, 0.2);
-    border: 2px solid rgba(255, 255, 255, 0.35);
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.18);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.15rem;
-    font-weight: 800;
+    font-size: 1.6rem;
+    font-weight: 900;
+    box-shadow: 0 0 0 0 rgba(255,255,255,0.4);
+    animation: ufaaIconPulse 3s infinite;
+    flex-shrink: 0;
+}
+
+@keyframes ufaaIconPulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255,255,255,0.35); }
+    50%  { box-shadow: 0 0 0 6px rgba(255,255,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
 }
 
 .top-header .brand-text h1 {
@@ -947,6 +1001,55 @@ footer p + p {
     color: rgba(255, 255, 255, 0.8);
     text-transform: uppercase;
     letter-spacing: 1px;
+}
+
+/* Vertical divider between UFAA and Airtel */
+.header-brand-divider {
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.35), transparent);
+    flex-shrink: 0;
+    margin: 0 0.5rem;
+}
+
+/* Airtel co-branding (right side) */
+.header-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+/* White pill background so real logo colors show on the red header */
+.header-airtel-logo-wrap {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 5px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.15), 0 1px 3px rgba(0,0,0,0.1);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.header-airtel-logo-wrap:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.2);
+}
+
+.header-airtel-logo {
+    height: 36px;
+    width: auto;
+    object-fit: contain;
+    display: block;
+}
+
+.header-airtel-label {
+    font-size: 0.6rem;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 
 /* Mobile Hamburger Toggle Button Styling */
@@ -1256,6 +1359,11 @@ textarea.filter-input {
     height: 38px;
     font-family: inherit;
     line-height: 1.4;
+}
+
+input.filter-input {
+    height: 38px;
+    box-sizing: border-box;
 }
 
 .filter-input:focus {

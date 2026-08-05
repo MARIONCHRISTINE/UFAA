@@ -9,8 +9,9 @@ try {
 $ownerNameFilter = trim($_GET['owner_name'] ?? '');
 $idNoFilter = trim($_GET['id_no'] ?? '');
 $accountNoFilter = trim($_GET['account_no'] ?? '');
+$amountFilter = trim($_GET['amount'] ?? '');
 $statusFilter = trim($_GET['status'] ?? '');
-$letterFilter = 'Yes'; // Force letters received
+$letterFilter = trim($_GET['letter_filter'] ?? 'all'); // 'all', 'generated', 'uploaded'
 $compilationStartFilter = trim($_GET['compilation_start'] ?? '');
 $compilationEndFilter = trim($_GET['compilation_end'] ?? '');
 $page = max(1, intval($_GET['page'] ?? 1));
@@ -21,8 +22,9 @@ $totalPages = 1;
 $totalFiltered = 0;
 
 if ($dbInitialized && $pdo) {
-    $whereClauses = ["`letter_received` = 'Yes'"];
+    $whereClauses = ["(`letter_generated` = 'Yes' OR `letter_received` = 'Yes' OR `letter_file_path` IS NOT NULL)"];
     $params = [];
+
     if ($ownerNameFilter !== '') {
         $whereClauses[] = "`owner_name` IS NOT NULL AND TRIM(`owner_name`) != ''";
         build_multiple_search_clause('owner_name', $ownerNameFilter, $whereClauses, $params, 'owner_name');
@@ -34,6 +36,10 @@ if ($dbInitialized && $pdo) {
     if ($accountNoFilter !== '') {
         $whereClauses[] = "`account_number` IS NOT NULL AND TRIM(`account_number`) != ''";
         build_multiple_search_clause('account_number', $accountNoFilter, $whereClauses, $params, 'account_no');
+    }
+    if ($amountFilter !== '') {
+        $whereClauses[] = "`due_amount` LIKE :amount_filter";
+        $params[':amount_filter'] = '%' . $amountFilter . '%';
     }
     if ($statusFilter !== '') {
         $whereClauses[] = "`status` = :status";
@@ -47,6 +53,7 @@ if ($dbInitialized && $pdo) {
         $whereClauses[] = "`compilation_date` <= :compilation_end";
         $params[':compilation_end'] = $compilationEndFilter;
     }
+
     $whereSql = 'WHERE ' . implode(' AND ', $whereClauses);
     $countQuery = $pdo->prepare("SELECT COUNT(*) FROM `unclaimed_assets` $whereSql");
     $countQuery->execute($params);
@@ -66,29 +73,37 @@ require_once 'includes/layout.php';
 ?>
 
 <div class="data-management-card" id="records-section" style="margin-top: 1rem;">
-    <h2 style="margin-bottom: 1.5rem; color: var(--airtel-red);">Letters Received</h2>
+    <h2 style="margin-bottom: 1.5rem; color: var(--airtel-red); display:flex; align-items:center; gap:0.6rem;">
+        <i class="fa-solid fa-file-pdf"></i> Letters Issued Hub
+    </h2>
     
     <!-- Advanced Searching & Filtering controls -->
     <form method="GET" action="letters.php#records-section" class="filters-panel">
         <div class="filters-grid">
             <div class="filter-group">
                 <label>Owner Name</label>
-                <textarea name="owner_name" rows="1" placeholder="Search name(s)... (comma/newline separated)" class="filter-input"><?= htmlspecialchars($ownerNameFilter) ?></textarea>
+                <textarea name="owner_name" rows="1" placeholder="Search name(s)..." class="filter-input"><?= htmlspecialchars($ownerNameFilter) ?></textarea>
             </div>
             <div class="filter-group">
                 <label>ID / Passport No</label>
-                <textarea name="id_no" rows="1" placeholder="Search ID/Passport(s)... (comma/newline separated)" class="filter-input"><?= htmlspecialchars($idNoFilter) ?></textarea>
+                <textarea name="id_no" rows="1" placeholder="Search ID/Passport(s)..." class="filter-input"><?= htmlspecialchars($idNoFilter) ?></textarea>
             </div>
             <div class="filter-group">
                 <label>Account Number</label>
-                <textarea name="account_no" rows="1" placeholder="Search account(s)... (comma/newline separated)" class="filter-input"><?= htmlspecialchars($accountNoFilter) ?></textarea>
+                <textarea name="account_no" rows="1" placeholder="Search account(s)..." class="filter-input"><?= htmlspecialchars($accountNoFilter) ?></textarea>
             </div>
             <div class="filter-group">
-                <label>Claim Status</label>
+                <label>Amount</label>
+                <input type="text" name="amount" placeholder="e.g. 5000" value="<?= htmlspecialchars($amountFilter) ?>" class="filter-input">
+            </div>
+            <div class="filter-group">
+                <label>Claim Stage</label>
                 <select name="status" class="filter-input">
-                    <option value="">-- All Statuses --</option>
-                    <option value="Unclaimed" <?= $statusFilter === 'Unclaimed' ? 'selected' : '' ?>>Unclaimed Only</option>
-                    <option value="Claimed" <?= $statusFilter === 'Claimed' ? 'selected' : '' ?>>Claimed Only</option>
+                    <option value="">-- All Stages --</option>
+                    <option value="Unclaimed" <?= $statusFilter === 'Unclaimed' ? 'selected' : '' ?>>Unclaimed</option>
+                    <option value="Letter Generated" <?= $statusFilter === 'Letter Generated' ? 'selected' : '' ?>>Letter Issued</option>
+                    <option value="Submitted" <?= $statusFilter === 'Submitted' ? 'selected' : '' ?>>Submitted to UFAA</option>
+                    <option value="Claimed" <?= $statusFilter === 'Claimed' ? 'selected' : '' ?>>Claimed</option>
                 </select>
             </div>
             <div class="filter-group">
@@ -128,14 +143,14 @@ require_once 'includes/layout.php';
                     <th>Account Number</th>
                     <th>Due Amount</th>
                     <th>Compilation Date</th>
-                    <th style="text-align: center; width: 130px;">Status</th>
-                    <th style="text-align: center; width: 130px;">Letter Received</th>
-                    <th style="width: 250px;">Letter Date &amp; File</th>
+                    <th style="text-align: center; width: 140px;">Claim Stage</th>
+                    <th style="text-align: center; width: 160px;">Generated Letter PDF</th>
+                    <th style="width: 220px;">Stamped Copy &amp; Timestamp</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($assets)): ?>
-                    <tr><td colspan="9"><div class="empty-state"><p>No letters received records found matching search or filter parameters.</p></div></td></tr>
+                    <tr><td colspan="9"><div class="empty-state"><p>No holder letter records found matching search or filter parameters.</p></div></td></tr>
                 <?php else: ?>
                     <?php $itemIndex = $offset + 1; foreach ($assets as $asset): ?>
                         <tr id="row-<?= $asset['record_id'] ?>">
@@ -144,40 +159,55 @@ require_once 'includes/layout.php';
                             <td><?= htmlspecialchars($asset['id_passport_no'] ?? '-') ?></td>
                             <td><?= htmlspecialchars($asset['account_number'] ?? '-') ?></td>
                             <td class="col-amount"><?= htmlspecialchars($asset['due_amount'] ?? '-') ?></td>
-                            <td>
-                                <?= htmlspecialchars($asset['compilation_date'] ?? '-') ?>
-                            </td>
+                            <td><?= htmlspecialchars($asset['compilation_date'] ?? '-') ?></td>
+                            
+                            <!-- Claim Stage -->
                             <td style="text-align: center;">
                                 <span 
                                     id="badge-status-<?= $asset['record_id'] ?>" 
-                                    class="status-badge <?= strtolower($asset['status']) ?>" 
+                                    class="status-badge <?= strtolower(str_replace(' ', '-', $asset['status'])) ?>" 
                                     onclick="toggleClaimStatus(<?= $asset['record_id'] ?>, '<?= $asset['status'] ?>')"
                                     title="Click to toggle claim status"
                                 >
-                                    <?= $asset['status'] === 'Claimed' ? '<i class="fa-solid fa-circle-check"></i> <span>Claimed</span>' : '<i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>' ?>
-                                </span>
-                            </td>
-                            <td style="text-align: center;">
-                                <span 
-                                    id="badge-letter-<?= $asset['record_id'] ?>" 
-                                    class="status-badge letter-yes" 
-                                    onclick="toggleLetterReceived(<?= $asset['record_id'] ?>, '<?= $asset['letter_received'] ?>')"
-                                    title="Click to toggle letter received"
-                                >
-                                    <i class="fa-solid fa-envelope-open-text"></i> <span>Yes</span>
-                                </span>
-                            </td>
-                            <td>
-                                <div class="letter-actions">
-                                    <div class="date-input-container">
-                                        <input type="text" value="<?= htmlspecialchars($asset['letter_date'] ?? '') ?>" data-original="<?= htmlspecialchars($asset['letter_date'] ?? '') ?>" class="date-edit-input" placeholder="Enter Date..." onblur="handleDateBlur(this, <?= $asset['record_id'] ?>)" onkeydown="handleDateKey(event, this, <?= $asset['record_id'] ?>)">
-                                        <i class="date-save-indicator fa-solid fa-pen"></i>
-                                    </div>
-                                    <button class="btn-upload-letter" onclick="document.getElementById('letter-upload-<?= $asset['record_id'] ?>').click()"><i class="fa-solid fa-paperclip"></i></button>
-                                    <input type="file" id="letter-upload-<?= $asset['record_id'] ?>" style="display:none;" onchange="uploadLetter(<?= $asset['record_id'] ?>, this)">
-                                    <?php if (!empty($asset['letter_file_path'])): ?>
-                                        <a href="<?= htmlspecialchars($asset['letter_file_path']) ?>" download class="letter-file-link"><i class="fa-solid fa-download"></i> Download</a>
+                                    <?php if ($asset['status'] === 'Claimed'): ?>
+                                        <i class="fa-solid fa-circle-check"></i> <span>Claimed</span>
+                                    <?php elseif ($asset['status'] === 'Letter Generated'): ?>
+                                        <i class="fa-solid fa-file-signature"></i> <span>Letter Issued</span>
+                                    <?php elseif ($asset['status'] === 'Submitted'): ?>
+                                        <i class="fa-solid fa-paper-plane"></i> <span>Submitted</span>
+                                    <?php else: ?>
+                                        <i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>
                                     <?php endif; ?>
+                                </span>
+                            </td>
+
+                            <!-- System-Generated Clean PDF (On-the-fly streaming) -->
+                            <td style="text-align: center;">
+                                <a href="view_letter.php?id=<?= $asset['record_id'] ?>" target="_blank" class="btn-pdf-gen" title="View & Print Official Holder Confirmation Letter">
+                                    <i class="fa-solid fa-print"></i> View / Print Letter
+                                </a>
+                            </td>
+
+                            <!-- Stamped Copy Attachment & Generated Timestamp -->
+                            <td>
+                                <div class="letter-actions" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                    <div id="attach-area-<?= $asset['record_id'] ?>" style="display:flex; align-items:center; gap:6px;">
+                                        <button class="btn-upload-letter" onclick="document.getElementById('letter-upload-<?= $asset['record_id'] ?>').click()" title="Attach or Replace Stamped/Scanned Copy"><i class="fa-solid fa-paperclip"></i></button>
+                                        <?php if (!empty($asset['stamped_file_path'])): ?>
+                                            <a href="<?= htmlspecialchars($asset['stamped_file_path']) ?>" target="_blank" class="stamped-view-link" style="font-size:0.82rem; font-weight:700; color:var(--airtel-red); text-decoration:none; display:inline-flex; align-items:center; gap:4px;" title="View Stamped/Attached Copy">
+                                                <i class="fa-solid fa-file-circle-check"></i> View Stamped Copy
+                                            </a>
+                                        <?php else: ?>
+                                            <span class="stamped-view-link-placeholder" style="font-size:0.75rem; color:#94a3b8; font-style:italic;">No Stamped Copy</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if (!empty($asset['letter_generated_date'])): ?>
+                                        <div style="font-size:0.75rem; color:#475569; background:#f1f5f9; padding:2px 7px; border-radius:4px; display:inline-flex; align-items:center; gap:4px; border:1px solid #e2e8f0;" title="Letter Generated Timestamp">
+                                            <i class="fa-solid fa-clock" style="color:var(--airtel-red); font-size:0.7rem;"></i>
+                                            <?= htmlspecialchars(date('d M Y, H:i', strtotime($asset['letter_generated_date']))) ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <input type="file" id="letter-upload-<?= $asset['record_id'] ?>" style="display:none;" onchange="uploadLetter(<?= $asset['record_id'] ?>, this)">
                                 </div>
                             </td>
                         </tr>
@@ -203,13 +233,10 @@ require_once 'includes/layout.php';
                 &nbsp;(<span><?= number_format($totalFiltered) ?></span> records)
             </div>
             <div class="pagination-buttons">
-                <!-- Prev button -->
                 <a href="<?= $paginationBase ?>&page=<?= max(1, $page - 1) ?>#records-section" 
                    class="btn-page btn-page-nav <?= $page === 1 ? 'disabled' : '' ?>">
                     <i class="fa-solid fa-chevron-left"></i> Prev
                 </a>
-
-                <!-- Jump to Page dropdown -->
                 <select class="page-jump-select" onchange="window.location.href=this.value+'#records-section'" aria-label="Jump to page">
                     <?php for ($i = 1; $i <= $totalPages; $i++): ?>
                         <option value="<?= $paginationBase ?>&page=<?= $i ?>" <?= $i === $page ? 'selected' : '' ?>>
@@ -217,8 +244,6 @@ require_once 'includes/layout.php';
                         </option>
                     <?php endfor; ?>
                 </select>
-
-                <!-- Next button -->
                 <a href="<?= $paginationBase ?>&page=<?= min($totalPages, $page + 1) ?>#records-section" 
                    class="btn-page btn-page-nav <?= $page === $totalPages ? 'disabled' : '' ?>">
                     Next <i class="fa-solid fa-chevron-right"></i>

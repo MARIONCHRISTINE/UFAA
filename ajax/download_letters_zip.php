@@ -12,13 +12,15 @@ if (!$pdo) {
 }
 
 // Extract filter parameters
-$ownerName = trim($_GET['owner_name'] ?? '');
-$idNo      = trim($_GET['id_no'] ?? '');
-$accountNo = trim($_GET['account_no'] ?? '');
-$status    = trim($_GET['status'] ?? '');
+$ownerName          = trim($_GET['owner_name'] ?? '');
+$idNo               = trim($_GET['id_no'] ?? '');
+$accountNo          = trim($_GET['account_no'] ?? '');
+$status             = trim($_GET['status'] ?? '');
+$compilationStart   = trim($_GET['compilation_start'] ?? '');
+$compilationEnd     = trim($_GET['compilation_end'] ?? '');
 
-// Build query
-$whereClauses = ["`letter_received` = 'Yes'", "`letter_file_path` IS NOT NULL", "`letter_file_path` != ''"];
+// Only records that have a stamped/uploaded copy attached
+$whereClauses = ["`stamped_file_path` IS NOT NULL", "`stamped_file_path` != ''"];
 $params = [];
 
 if (function_exists('build_multiple_search_clause')) {
@@ -30,11 +32,19 @@ if ($status !== '') {
     $whereClauses[] = "`status` = :status";
     $params[':status'] = $status;
 }
+if ($compilationStart !== '') {
+    $whereClauses[] = "`compilation_date` >= :compilation_start";
+    $params[':compilation_start'] = $compilationStart;
+}
+if ($compilationEnd !== '') {
+    $whereClauses[] = "`compilation_date` <= :compilation_end";
+    $params[':compilation_end'] = $compilationEnd;
+}
 
 $whereSql = 'WHERE ' . implode(' AND ', $whereClauses);
 
 try {
-    $stmt = $pdo->prepare("SELECT `owner_name`, `letter_file_path` FROM `unclaimed_assets` $whereSql ORDER BY `record_id` DESC");
+    $stmt = $pdo->prepare("SELECT `owner_name`, `stamped_file_path` AS `letter_file_path` FROM `unclaimed_assets` $whereSql ORDER BY `record_id` DESC");
     $stmt->execute($params);
     $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
 

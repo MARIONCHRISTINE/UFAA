@@ -42,11 +42,16 @@ $activePage = $activePage ?? 'home';
             <p>Unclaimed Financial Assets Authority</p>
         </div>
     </div>
+
+    <!-- Divider -->
+    <div class="header-brand-divider"></div>
+
+    <!-- Airtel Co-branding -->
     <div class="header-right">
-        <div class="badge-compliance">
-            <i class="fa-solid fa-shield-halved"></i>
-            <span>Compliance Portal</span>
+        <div class="header-airtel-logo-wrap">
+            <img src="logo.png" alt="Airtel Logo" class="header-airtel-logo">
         </div>
+        <span class="header-airtel-label">Airtel Internal Compliance Portal</span>
     </div>
 </header>
 
@@ -77,8 +82,8 @@ $activePage = $activePage ?? 'home';
             </a>
 
             <a href="letters.php" class="nav-item <?= $activePage === 'letters' ? 'active' : '' ?>">
-                <i class="fa-solid fa-envelope-open-text"></i>
-                <span>Letters Received</span>
+                <i class="fa-solid fa-file-pdf"></i>
+                <span>Letters Issued</span>
             </a>
 
         </nav>

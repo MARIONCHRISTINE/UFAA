@@ -38,24 +38,25 @@ if (!in_array($ext, $allowedExts)) {
     exit;
 }
 
-// Ensure upload directory exists
-$uploadDir = '../uploads/letters/';
+// Organize uploads by Year/Month subfolders for high performance & scalability
+$subDir = date('Y/m/');
+$relativeDir = 'uploads/stamped/' . $subDir;
+$uploadDir = '../' . $relativeDir;
+
 if (!is_dir($uploadDir)) {
     mkdir($uploadDir, 0755, true);
-    // Create .htaccess to prevent PHP execution
-    file_put_contents($uploadDir . '.htaccess', "RemoveHandler .php .phtml .php3\nRemoveType .php .phtml .php3\nphp_flag engine off\n");
 }
 
 // Generate safe unique filename
-$newFileName = 'letter_' . $recordId . '_' . time() . '.' . $ext;
+$newFileName = 'stamped_' . $recordId . '_' . time() . '.' . $ext;
 $destPath = $uploadDir . $newFileName;
 
 if (move_uploaded_file($fileTmp, $destPath)) {
     // Relative path for database and frontend (from site root)
-    $dbPath = 'uploads/letters/' . $newFileName;
+    $dbPath = $relativeDir . $newFileName;
     
     try {
-        $stmt = $pdo->prepare("UPDATE `unclaimed_assets` SET `letter_file_path` = :path WHERE `record_id` = :id");
+        $stmt = $pdo->prepare("UPDATE `unclaimed_assets` SET `stamped_file_path` = :path WHERE `record_id` = :id");
         $stmt->execute([':path' => $dbPath, ':id' => $recordId]);
         
         echo json_encode([

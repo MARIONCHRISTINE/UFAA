@@ -15,18 +15,27 @@ USE `ufaa_db`;
 -- ============================================================
 CREATE TABLE IF NOT EXISTS `unclaimed_assets` (
     `record_id`        INT AUTO_INCREMENT PRIMARY KEY,
-    `owner_name`       TEXT NULL,
-    `id_passport_no`   TEXT NULL,
-    `date_of_birth`    TEXT NULL,
-    `account_number`   TEXT NULL,
+    `owner_name`       VARCHAR(255) NULL,
+    `id_passport_no`   VARCHAR(255) NULL,
+    `date_of_birth`    VARCHAR(255) NULL,
+    `account_number`   VARCHAR(255) NULL,
     `last_transaction` TEXT NULL,
-    `due_amount`       TEXT NULL,
+    `due_amount`       VARCHAR(255) NULL,
     `compilation_date` DATE NULL,
-    `status`           VARCHAR(50)  DEFAULT 'Unclaimed',
-    `letter_received`  VARCHAR(10)  DEFAULT 'No',
-    `letter_date`      TEXT NULL,
-    `letter_file_path` TEXT NULL,
-    `uploaded_at`      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP
+    `status`                VARCHAR(50)  DEFAULT 'Unclaimed',
+    `letter_generated`       VARCHAR(10)  DEFAULT 'No',
+    `letter_generated_date`  DATETIME     NULL,
+    `letter_received`       VARCHAR(10)  DEFAULT 'No',
+    `letter_date`           TEXT NULL,
+    `letter_file_path`      TEXT NULL,
+    `stamped_file_path`     VARCHAR(500) NULL,
+    `uploaded_at`           TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    INDEX `idx_owner_name` (`owner_name`),
+    INDEX `idx_id_passport` (`id_passport_no`),
+    INDEX `idx_account_no` (`account_number`),
+    INDEX `idx_status` (`status`),
+    INDEX `idx_compilation_date` (`compilation_date`),
+    FULLTEXT INDEX `ft_owner_name` (`owner_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================================
@@ -34,10 +43,13 @@ CREATE TABLE IF NOT EXISTS `unclaimed_assets` (
 --     (Safe to run — only adds if missing)
 -- ============================================================
 ALTER TABLE `unclaimed_assets`
-    ADD COLUMN IF NOT EXISTS `compilation_date` DATE NULL                  AFTER `due_amount`,
-    ADD COLUMN IF NOT EXISTS `letter_received`  VARCHAR(10) DEFAULT 'No'  AFTER `status`,
-    ADD COLUMN IF NOT EXISTS `letter_date`      TEXT NULL                  AFTER `letter_received`,
-    ADD COLUMN IF NOT EXISTS `letter_file_path` TEXT NULL                  AFTER `letter_date`;
+    ADD COLUMN IF NOT EXISTS `compilation_date`      DATE NULL                  AFTER `due_amount`,
+    ADD COLUMN IF NOT EXISTS `letter_generated`      VARCHAR(10) DEFAULT 'No'  AFTER `status`,
+    ADD COLUMN IF NOT EXISTS `letter_generated_date` DATETIME    NULL         AFTER `letter_generated`,
+    ADD COLUMN IF NOT EXISTS `letter_received`       VARCHAR(10) DEFAULT 'No'  AFTER `letter_generated_date`,
+    ADD COLUMN IF NOT EXISTS `letter_date`           TEXT NULL                  AFTER `letter_received`,
+    ADD COLUMN IF NOT EXISTS `letter_file_path`      TEXT NULL                  AFTER `letter_date`,
+    ADD COLUMN IF NOT EXISTS `stamped_file_path`     VARCHAR(500) NULL        AFTER `letter_file_path`;
 
 -- ============================================================
 --  4. Uploaded Files Tracking Table

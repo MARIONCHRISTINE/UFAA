@@ -24,10 +24,10 @@
     </div>
 </div>
 
-<!-- Letter Received Selection Modal -->
+<!-- Letter Issued Selection Modal -->
 <div class="popup-overlay" id="letter-popup-overlay">
     <div class="popup-card">
-        <h3><i class="fa-solid fa-circle-question" style="color:var(--airtel-red)"></i> Letter Received?</h3>
+        <h3><i class="fa-solid fa-circle-question" style="color:var(--airtel-red)"></i> Letter Issued?</h3>
         <input type="hidden" id="letter-popup-record-id">
         <div class="popup-options">
             <label class="popup-option-label" id="label-letter-no">
