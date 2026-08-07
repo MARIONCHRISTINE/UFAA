@@ -159,3 +159,46 @@ function build_multiple_search_clause($fieldName, $userInput, &$whereClauses, &$
     }
 }
 
+/**
+ * Global Portal Session Authentication Guard
+ * Ensures no portal page or AJAX endpoint can be accessed without a valid logged-in session.
+ */
+function require_portal_auth() {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+    
+    // Allow unauthenticated access to public/auth pages
+    $script = strtolower(basename($_SERVER['SCRIPT_NAME'] ?? ''));
+    $publicPages = ['login.php', 'register.php', 'init_db.php', 'logout.php'];
+    if (in_array($script, $publicPages, true)) {
+        return;
+    }
+
+    // Skip if script is inside admin folder (admin_auth.php handles admin guard)
+    $uri = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+    if (strpos($uri, '/admin/') !== false) {
+        return;
+    }
+
+    // Guard all officer portal pages & AJAX endpoints
+    if (empty($_SESSION['admin_logged_in']) || empty($_SESSION['admin_user'])) {
+        $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') 
+                  || (strpos($_SERVER['REQUEST_URI'] ?? '', '/ajax/') !== false);
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => 'Authentication required. Please log in.']);
+            exit;
+        } else {
+            if (!defined('BASE_PATH')) {
+                define('BASE_PATH', '');
+            }
+            $_SESSION['login_notice'] = 'Please log in to access the portal.';
+            header('Location: ' . BASE_PATH . '/login.php');
+            exit;
+        }
+    }
+}
+
+// Auto-enforce session guard across all pages
+require_portal_auth();
