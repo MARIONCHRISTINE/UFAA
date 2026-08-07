@@ -88,9 +88,25 @@ $activePage = $activePage ?? 'home';
 
         </nav>
 
-        <!-- Logout placeholder at the very bottom -->
+        <!-- Profile + Logout -->
         <div class="sidebar-footer">
-            <a href="#" class="nav-item nav-logout" onclick="alert('Login system coming soon!'); return false;">
+            <!-- Profile card -->
+            <?php
+                $__u        = $_SESSION['admin_user'] ?? [];
+                $__display  = htmlspecialchars($__u['username'] ?? 'User');
+                $__fullname = $__u['fullname'] ?? $__u['username'] ?? 'U';
+                $__role     = ($__u['role'] ?? '') === 'compliance_admin' ? 'Compliance Admin' : 'Compliance Officer';
+                $__initials = strtoupper(implode('', array_map(function($w){ return $w[0]; }, array_slice(explode(' ', trim($__fullname)), 0, 2))));
+            ?>
+            <div class="sidebar-profile">
+                <div class="sidebar-avatar"><?= $__initials ?: 'U' ?></div>
+                <div class="sidebar-profile-info">
+                    <span class="sidebar-profile-name"><?= $__display ?></span>
+                    <span class="sidebar-profile-role"><?= $__role ?></span>
+                </div>
+            </div>
+            <!-- Logout -->
+            <a href="logout.php" class="nav-item nav-logout">
                 <i class="fa-solid fa-right-from-bracket"></i>
                 <span>Logout</span>
             </a>

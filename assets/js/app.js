@@ -553,44 +553,44 @@ document.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('DOMContentLoaded', () => {
     const mobileMenuBtn = document.getElementById('mobile-menu-btn');
     const sidebar = document.querySelector('.sidebar');
-    const mainContent = document.querySelector('.main-content');
-    
-    if (mobileMenuBtn && sidebar) {
-        mobileMenuBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            sidebar.classList.toggle('open');
-            // Toggle icon between bars and times
-            const icon = mobileMenuBtn.querySelector('i');
-            if (icon) {
-                if (sidebar.classList.contains('open')) {
-                    icon.className = 'fa-solid fa-xmark';
-                } else {
-                    icon.className = 'fa-solid fa-bars';
-                }
-            }
-        });
 
-        // Close sidebar when clicking outside of it (e.g. main content area)
-        if (mainContent) {
-            mainContent.addEventListener('click', () => {
-                if (sidebar.classList.contains('open')) {
-                    sidebar.classList.remove('open');
-                    const icon = mobileMenuBtn.querySelector('i');
-                    if (icon) icon.className = 'fa-solid fa-bars';
-                }
-            });
-        }
+    if (!mobileMenuBtn || !sidebar) return;
 
-        // Close sidebar when clicking a navigation link
-        sidebar.querySelectorAll('.nav-item').forEach(link => {
-            link.addEventListener('click', () => {
-                sidebar.classList.remove('open');
-                const icon = mobileMenuBtn.querySelector('i');
-                if (icon) icon.className = 'fa-solid fa-bars';
-            });
-        });
+    // Mark as bound so admin.js won't double-bind on admin pages
+    mobileMenuBtn.dataset.sidebarBound = '1';
+
+    function openSidebar() {
+        sidebar.classList.add('open');
+        document.body.classList.add('sidebar-open');
+        const icon = mobileMenuBtn.querySelector('i');
+        if (icon) icon.className = 'fa-solid fa-xmark';
     }
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        document.body.classList.remove('sidebar-open');
+        const icon = mobileMenuBtn.querySelector('i');
+        if (icon) icon.className = 'fa-solid fa-bars';
+    }
+
+    mobileMenuBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+    });
+
+    // Close sidebar when clicking the dark overlay (body::after)
+    document.body.addEventListener('click', (e) => {
+        if (document.body.classList.contains('sidebar-open') && !sidebar.contains(e.target) && e.target !== mobileMenuBtn) {
+            closeSidebar();
+        }
+    });
+
+    // Close sidebar when clicking a navigation link
+    sidebar.querySelectorAll('.nav-item').forEach(link => {
+        link.addEventListener('click', () => closeSidebar());
+    });
 });
+
 
 // 10. Chunked Excel Export System (Handles millions of rows by auto-separating in blocks of 200,000)
 function showExportProgressModal(totalChunks) {

@@ -44,10 +44,25 @@ $dupCheck->execute([$cleanFileName]);
 $existing = $dupCheck->fetch();
 
 if ($existing) {
+    // Log the declined attempt to activity_logs
+    try {
+        if (session_status() === PHP_SESSION_NONE) { session_start(); }
+        $uname = $_SESSION['admin_user']['username'] ?? $_SESSION['username'] ?? 'Unknown User';
+        $ip    = $_SERVER['REMOTE_ADDR'] ?? '';
+        $pdo->prepare("
+            INSERT INTO activity_logs (user_id, username, action, description, ip_address)
+            VALUES (NULL, ?, 'upload_declined', ?, ?)
+        ")->execute([
+            $uname,
+            "Upload declined: file '{$cleanFileName}' already exists in the registry. User was asked to rename the file.",
+            $ip
+        ]);
+    } catch (Exception $logEx) { /* silent fail */ }
+
     http_response_code(400);
     echo json_encode([
-        'status' => 'error',
-        'message' => 'This file has already been uploaded.'
+        'status'  => 'error',
+        'message' => 'This file has already been uploaded. Please rename the file and try again.'
     ]);
     exit;
 }
@@ -176,6 +191,34 @@ try {
     $pdo->prepare("INSERT IGNORE INTO `uploaded_files` (`file_name`) VALUES (?)")->execute([$cleanFileName]);
 
     $totalParsed = count($allRows);
+
+    // Automate activity logging for all uploads
+    try {
+        if (session_status() === PHP_SESSION_NONE) { session_start(); }
+        $uname = $_SESSION['admin_user']['username'] ?? $_SESSION['username'] ?? 'System Uploader';
+        $ip    = $_SERVER['REMOTE_ADDR'] ?? '';
+        
+        $logStmt = $pdo->prepare("
+            INSERT INTO `activity_logs` (user_id, username, action, description, ip_address)
+            VALUES (NULL, ?, 'upload', ?, ?)
+        ");
+        $logStmt->execute([
+            $uname,
+            "Uploaded file '{$cleanFileName}' — Parsed {$totalParsed} rows, inserted {$result['inserted']} records",
+            $ip
+        ]);
+
+        $sessStmt = $pdo->prepare("
+            INSERT INTO `upload_sessions` (uploaded_by, file_name, record_count, status, notes)
+            VALUES (?, ?, ?, 'success', ?)
+        ");
+        $sessStmt->execute([
+            $uname,
+            $cleanFileName,
+            $result['inserted'],
+            "Parsed {$totalParsed} rows, inserted {$result['inserted']} records"
+        ]);
+    } catch (Exception $logEx) { /* silent fail */ }
     echo json_encode([
         'status'         => 'success',
         'inserted_count' => $result['inserted'],

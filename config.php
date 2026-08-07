@@ -8,10 +8,27 @@
 // Set default timezone to Kenya
 date_default_timezone_set('Africa/Nairobi');
 
+// Start session if not already started
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 define('DB_HOST', '127.0.0.1'); // If your XAMPP uses a custom port, change to e.g., '127.0.0.1:3307'
 define('DB_USER', 'root');
 define('DB_PASS', '');          // If your MySQL has a password, enter it here!
 define('DB_NAME', 'ufaa_db');
+
+// ── App base path (root-relative) ─────────────────────────────────────────────
+// Computes the URL subfolder the app lives in.
+// e.g.  DOCUMENT_ROOT = C:/xampp/htdocs,  __DIR__ = C:/xampp/htdocs/UFAA  → /UFAA
+// e.g.  DOCUMENT_ROOT = C:/xampp/htdocs/UFAA (virtual host)               → ''
+if (!defined('BASE_PATH')) {
+    $__docRoot  = str_replace('\\', '/', rtrim($_SERVER['DOCUMENT_ROOT'] ?? '', '/\\'));
+    $__appRoot  = str_replace('\\', '/', rtrim(__DIR__, '/\\'));
+    $__basePath = str_replace($__docRoot, '', $__appRoot); // e.g. '/UFAA' or ''
+    define('BASE_PATH', $__basePath);                      // root-relative, no trailing slash
+    unset($__docRoot, $__appRoot, $__basePath);
+}
 
 try {
     // Attempt standard connection to the MySQL server
@@ -25,6 +42,8 @@ try {
             PDO::ATTR_EMULATE_PREPARES => false,
         ]
     );
+    // Auto-create database if missing
+    $pdo_init->exec("CREATE DATABASE IF NOT EXISTS `" . DB_NAME . "` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
 } catch (PDOException $e) {
     die("Database connection failed! Please ensure MySQL is running in your XAMPP Control Panel. Error details: " . $e->getMessage());
 }

@@ -135,6 +135,42 @@ if ($dbInitialized && $pdo) {
 $activePage = 'home';
 require_once 'includes/layout.php';
 ?>
+        <!-- System Maintenance Banner (if configured in Admin Settings) -->
+        <?php
+        if ($pdo) {
+            try {
+                $mSettings = [];
+                $mRows = $pdo->query("SELECT setting_key, setting_value FROM admin_settings WHERE setting_key LIKE 'maintenance_%'")->fetchAll();
+                foreach ($mRows as $mr) $mSettings[$mr['setting_key']] = $mr['setting_value'];
+
+                $mMode   = $mSettings['maintenance_mode'] ?? '0';
+                $mBanner = $mSettings['maintenance_show_banner'] ?? '1';
+                $mMsg    = $mSettings['maintenance_banner_msg'] ?? '';
+                $mSched  = $mSettings['maintenance_scheduled_at'] ?? '';
+
+                if ($mBanner === '1' && ($mMode === '1' || $mMode === 'scheduled')):
+                    $isNow = ($mMode === '1');
+                    $bg    = $isNow ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)';
+                    $border= $isNow ? 'rgba(239, 68, 68, 0.4)'  : 'rgba(245, 158, 11, 0.4)';
+                    $color = $isNow ? '#f87171' : '#fbbf24';
+        ?>
+        <div style="background:<?= $bg ?>;border:1px solid <?= $border ?>;border-radius:12px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:1rem;backdrop-filter:blur(8px);">
+            <i class="fa-solid fa-triangle-exclamation" style="font-size:1.5rem;color:<?= $color ?>;"></i>
+            <div style="flex:1;font-size:0.9rem;line-height:1.5;color:var(--text-main);">
+                <strong style="color:<?= $color ?>;">
+                    <?= $isNow ? 'System Under Maintenance Notice:' : 'Scheduled Maintenance Notice:' ?>
+                </strong>
+                <span><?= htmlspecialchars($mMsg ?: 'System maintenance is scheduled.') ?></span>
+                <?php if ($mSched && !$isNow): ?>
+                <span style="font-weight:600;margin-left:0.35rem;color:var(--color-gold);">(Scheduled for <?= date('d M Y, H:i', strtotime($mSched)) ?>)</span>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
+                endif;
+            } catch (Exception $mEx) {}
+        }
+        ?>
 
         <!-- Setup Database Modal Card if DB doesn't exist -->
         <?php if (!$dbInitialized): ?>
