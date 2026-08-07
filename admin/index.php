@@ -123,26 +123,46 @@ async function loadStats() {
         const d = await AdminAjax.get('ajax/get_stats.php');
         if (!d.success) throw new Error(d.error);
 
-        const subs = {
-            total:          `${d.claimed} claimed, ${d.unclaimed} unclaimed`,
-            claimed:        `${d.total > 0 ? ((d.claimed/d.total)*100).toFixed(1) : 0}% of total`,
-            unclaimed:      `${d.total > 0 ? ((d.unclaimed/d.total)*100).toFixed(1) : 0}% of total`,
-            letters:        `${d.total > 0 ? ((d.letters/d.total)*100).toFixed(1) : 0}% coverage`,
-            users:          'active admin accounts',
-        };
+        const pct = (n) => d.total > 0 ? ((n / d.total) * 100).toFixed(1) : '0.0';
 
-        const counts = { total: d.total, claimed: d.claimed, unclaimed: d.unclaimed,
-            letters: d.letters, users: d.users };
+        // total — show raw count, sub = breakdown
+        const elTotal = document.getElementById('stat-total');
+        const subTotal = document.getElementById('stat-sub-total');
+        if (elTotal) { elTotal.dataset.count = d.total; animateCounter(elTotal, d.total, 900); }
+        if (subTotal) subTotal.innerHTML = `<span style="color:var(--color-green);font-weight:600;">${Number(d.claimed).toLocaleString()} claimed</span> &nbsp;|&nbsp; <span style="color:var(--color-orange);font-weight:600;">${Number(d.unclaimed).toLocaleString()} unclaimed</span>`;
 
-        Object.entries(counts).forEach(([key, val]) => {
-            const el  = document.getElementById(`stat-${key}`);
-            const sub = document.getElementById(`stat-sub-${key}`);
-            if (el) {
-                el.dataset.count = val;
-                animateCounter(el, val, 800);
-            }
-            if (sub) sub.textContent = subs[key] || '';
-        });
+        // unclaimed — show percentage as headline, count in sub
+        const elUnclaimed = document.getElementById('stat-unclaimed');
+        const subUnclaimed = document.getElementById('stat-sub-unclaimed');
+        if (elUnclaimed) {
+            elUnclaimed.textContent = pct(d.unclaimed) + '%';
+            elUnclaimed.dataset.count = d.unclaimed;
+        }
+        if (subUnclaimed) subUnclaimed.textContent = `${Number(d.unclaimed).toLocaleString()} records of ${Number(d.total).toLocaleString()} total`;
+
+        // claimed — show percentage as headline, count in sub
+        const elClaimed = document.getElementById('stat-claimed');
+        const subClaimed = document.getElementById('stat-sub-claimed');
+        if (elClaimed) {
+            elClaimed.textContent = pct(d.claimed) + '%';
+            elClaimed.dataset.count = d.claimed;
+        }
+        if (subClaimed) subClaimed.textContent = `${Number(d.claimed).toLocaleString()} records of ${Number(d.total).toLocaleString()} total`;
+
+        // letters — show percentage coverage as headline, count in sub
+        const elLetters = document.getElementById('stat-letters');
+        const subLetters = document.getElementById('stat-sub-letters');
+        if (elLetters) {
+            elLetters.textContent = pct(d.letters) + '%';
+            elLetters.dataset.count = d.letters;
+        }
+        if (subLetters) subLetters.textContent = `${Number(d.letters).toLocaleString()} letters issued of ${Number(d.total).toLocaleString()}`;
+
+        // users — show raw count
+        const elUsers = document.getElementById('stat-users');
+        const subUsers = document.getElementById('stat-sub-users');
+        if (elUsers) { elUsers.dataset.count = d.users; animateCounter(elUsers, d.users, 600); }
+        if (subUsers) subUsers.textContent = 'active admin accounts';
 
         // ── Charts ──
         if (doughnutChart) doughnutChart.destroy();

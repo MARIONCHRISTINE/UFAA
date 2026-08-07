@@ -445,12 +445,34 @@ body.admin-body {
 /* ── Mobile (≤768px) ── */
 @media (max-width: 768px) {
 
-    /* Header compact */
+    /* Header compact — ensure hamburger + brand fit side by side */
     .admin-body .top-header {
-        padding: 0.75rem 1.1rem;
+        padding: 0.65rem 1rem;
+        gap: 0.6rem;
+    }
+    .admin-body .top-header .header-brand {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        overflow: hidden;
+    }
+    .admin-body .top-header .brand-logo-icon {
+        flex-shrink: 0;
+        width: 34px;
+        height: 34px;
+        font-size: 1rem;
+    }
+    .admin-body .top-header .brand-text {
+        min-width: 0;
+        overflow: hidden;
     }
     .admin-body .top-header .brand-text h1 {
-        font-size: 1.05rem;
+        font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .admin-body .top-header .brand-text p {
         display: none;
@@ -460,9 +482,14 @@ body.admin-body {
         display: none;
     }
 
-    /* Show hamburger */
+    /* Show hamburger — fix its own size so it doesn't push brand out */
     .admin-body .mobile-menu-toggle {
         display: inline-flex !important;
+        flex-shrink: 0;
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        font-size: 1.05rem;
     }
 
     /* Dark overlay backdrop */
@@ -574,7 +601,18 @@ body.admin-body {
     }
 
     .admin-body .top-header {
-        padding: 0.65rem 0.9rem;
+        padding: 0.55rem 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .admin-body .top-header .mobile-menu-toggle {
+        width: 34px;
+        height: 34px;
+        font-size: 0.95rem;
+    }
+
+    .admin-body .top-header .brand-text h1 {
+        font-size: 0.9rem;
     }
 
     .admin-main {
@@ -587,5 +625,10 @@ body.admin-body {
 
     .stat-value {
         font-size: 1.6rem;
+    }
+
+    /* Stat sub-label smaller on very small screens */
+    .stat-card .stat-sub {
+        font-size: 0.7rem !important;
     }
 }
