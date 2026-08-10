@@ -74,6 +74,23 @@ if ($fieldName === 'status') {
 }
 
 try {
+    // Fetch owner name & old status for descriptive activity logging
+    $ownerStmt = $pdo->prepare("SELECT `owner_name`, `status` FROM `unclaimed_assets` WHERE `record_id` = ?");
+    $ownerStmt->execute([(int)$recordId]);
+    $existingRecord = $ownerStmt->fetch();
+
+    if (!$existingRecord) {
+        http_response_code(404);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Asset record not found.'
+        ]);
+        exit;
+    }
+
+    $ownerName = $existingRecord['owner_name'] ?? '';
+    $oldStatus = $existingRecord['status'] ?? '';
+
     // Perform parameterized update securely using whitelisted field name
     $stmt = $pdo->prepare("UPDATE `unclaimed_assets` SET `$fieldName` = :val WHERE `record_id` = :id");
     $stmt->execute([
@@ -87,31 +104,24 @@ try {
         $stmtDate->execute([':id' => (int)$recordId]);
     }
 
-    // Check if record exists to determine exact success message
-    $chk = $pdo->prepare("SELECT `record_id` FROM `unclaimed_assets` WHERE `record_id` = ?");
-    $chk->execute([(int)$recordId]);
-    if ($chk->fetch()) {
-        
-        $friendlyFieldNames = [
-            'status' => 'Claiming status',
-            'letter_generated' => 'Letter Generated status',
-            'letter_received' => 'Letter Received status',
-            'letter_date' => 'Letter date detail'
-        ];
-        
-        $displayValue = $newValue === null ? 'Cleared' : $newValue;
+    $friendlyFieldNames = [
+        'status'           => 'Claiming status',
+        'letter_generated' => 'Letter Generated status',
+        'letter_received'  => 'Letter Received status',
+        'letter_date'      => 'Letter date detail'
+    ];
+    
+    $displayValue = $newValue === null ? 'Cleared' : $newValue;
 
-        echo json_encode([
-            'status' => 'success',
-            'message' => $friendlyFieldNames[$fieldName] . ' updated successfully to: ' . $displayValue
-        ]);
-    } else {
-        http_response_code(404);
-        echo json_encode([
-            'status' => 'error',
-            'message' => 'Asset record not found.'
-        ]);
-    }
+    // Log officer activity
+    $actionKey = ($fieldName === 'status') ? 'status_change' : 'record_edit';
+    $desc = "Changed {$friendlyFieldNames[$fieldName]} to '{$displayValue}'" . ($oldStatus && $fieldName === 'status' ? " (was '{$oldStatus}')" : "") . " for Record #{$recordId}" . ($ownerName ? " ({$ownerName})" : "");
+    log_activity($actionKey, $desc, (int)$recordId);
+
+    echo json_encode([
+        'status' => 'success',
+        'message' => $friendlyFieldNames[$fieldName] . ' updated successfully to: ' . $displayValue
+    ]);
 
 } catch (PDOException $e) {
     http_response_code(500);

@@ -26,7 +26,7 @@ $offset  = ($page - 1) * $perPage;
 try {
     $where = $field === 'date_of_birth'
         ? "date_of_birth IS NULL"
-        : "$field IS NULL OR TRIM($field) = ''";
+        : "($field IS NULL OR $field = '')";
 
     $total = (int)$pdo->query("SELECT COUNT(*) FROM unclaimed_assets WHERE $where")->fetchColumn();
 

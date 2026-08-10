@@ -194,20 +194,9 @@ try {
 
     // Automate activity logging for all uploads
     try {
-        if (session_status() === PHP_SESSION_NONE) { session_start(); }
-        $uname = $_SESSION['admin_user']['username'] ?? $_SESSION['username'] ?? 'System Uploader';
-        $ip    = $_SERVER['REMOTE_ADDR'] ?? '';
-        
-        $logStmt = $pdo->prepare("
-            INSERT INTO `activity_logs` (user_id, username, action, description, ip_address)
-            VALUES (NULL, ?, 'upload', ?, ?)
-        ");
-        $logStmt->execute([
-            $uname,
-            "Uploaded file '{$cleanFileName}' — Parsed {$totalParsed} rows, inserted {$result['inserted']} records",
-            $ip
-        ]);
+        log_activity('upload', "Uploaded file '{$cleanFileName}' — Parsed {$totalParsed} rows, inserted {$result['inserted']} records");
 
+        $uname = $_SESSION['admin_user']['username'] ?? $_SESSION['username'] ?? 'System Uploader';
         $sessStmt = $pdo->prepare("
             INSERT INTO `upload_sessions` (uploaded_by, file_name, record_count, status, notes)
             VALUES (?, ?, ?, 'success', ?)

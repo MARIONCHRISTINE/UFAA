@@ -118,6 +118,11 @@ try {
     // Create file pointer writing to output stream
     $output = fopen('php://output', 'w');
     
+    // Log officer activity
+    $countRows = count($records);
+    $statusDesc = $status ? " [Status: {$status}]" : "";
+    log_activity('export', "Exported {$countRows} asset records to CSV/Excel report{$statusDesc}");
+
     // Add UTF-8 BOM for proper rendering of special characters in Excel
     fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
 

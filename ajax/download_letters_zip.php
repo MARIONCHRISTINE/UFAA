@@ -52,6 +52,9 @@ try {
         die("No letter files found matching the search/filter parameters.");
     }
 
+    // Log officer activity
+    log_activity('export', "Downloaded batch Holder Letters ZIP archive (" . count($records) . " records)");
+
     // Ensure ZipArchive class exists
     if (!class_exists('ZipArchive')) {
         die("ZipArchive PHP extension is not installed or enabled on this server.");

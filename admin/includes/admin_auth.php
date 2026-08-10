@@ -183,6 +183,11 @@ function admin_require_auth(): void
     }
 
     $_SESSION['last_activity'] = time();
+
+    // Release session lock on GET requests so parallel page loading isn't blocked
+    if (session_status() === PHP_SESSION_ACTIVE && strtolower($_SERVER['REQUEST_METHOD'] ?? 'get') === 'get') {
+        session_write_close();
+    }
 }
 
 // ── Activity logger ───────────────────────────────────────────────────────

@@ -129,12 +129,24 @@ function adminConfirmLogout() {
 /* ═══════════════════════════════════════════════════════════════
    AJAX HELPER
 ═══════════════════════════════════════════════════════════════ */
+let _activeAdminFetchController = null;
+
 const AdminAjax = {
     /**
-     * POST JSON data to a URL and return parsed response.
+     * Abort any pending data fetch requests (non-upload, non-download)
+     */
+    abortPendingFetch() {
+        if (_activeAdminFetchController) {
+            try { _activeAdminFetchController.abort(); } catch (e) {}
+            _activeAdminFetchController = null;
+        }
+    },
+
+    /**
+     * POST form data (url-encoded)
      */
     async post(url, data = {}) {
-        const body = new URLSearchParams(data);
+        const body = new URLSearchParams(data).toString();
         const resp = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -145,14 +157,35 @@ const AdminAjax = {
     },
 
     /**
-     * GET with optional query params.
+     * GET with optional query params and automatic abort-previous logic.
+     * Preserves upload and download requests without aborting.
      */
-    async get(url, params = {}) {
+    async get(url, params = {}, options = {}) {
+        const isPreserved = options.preserve || url.includes('export') || url.includes('download') || url.includes('upload');
+        
+        if (!isPreserved) {
+            this.abortPendingFetch();
+            _activeAdminFetchController = new AbortController();
+        }
+
         const qs = new URLSearchParams(params).toString();
         const fullUrl = qs ? `${url}?${qs}` : url;
-        const resp = await fetch(fullUrl);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return resp.json();
+        
+        const fetchOpts = {};
+        if (!isPreserved && _activeAdminFetchController) {
+            fetchOpts.signal = _activeAdminFetchController.signal;
+        }
+
+        try {
+            const resp = await fetch(fullUrl, fetchOpts);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return await resp.json();
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                return { success: false, aborted: true };
+            }
+            throw err;
+        }
     },
 };
 

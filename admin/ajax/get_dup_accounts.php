@@ -2,6 +2,7 @@
 /**
  * UFAA Admin AJAX — Duplicate Account Numbers
  * Returns records that share an account_number with at least one other record.
+ * High-performance optimized for multi-million record datasets.
  * Supports pagination: page, per_page (default 100)
  */
 
@@ -17,40 +18,33 @@ $perPage = min(500, max(25, (int)($_GET['per_page'] ?? 100)));
 $offset  = ($page - 1) * $perPage;
 
 try {
-    // Count total records involved in duplicate account numbers
-    $total = (int)$pdo->query("
-        SELECT COUNT(*) FROM unclaimed_assets
-        WHERE account_number IS NOT NULL
-          AND TRIM(account_number) != ''
-          AND account_number IN (
-              SELECT account_number FROM unclaimed_assets
-              WHERE account_number IS NOT NULL AND TRIM(account_number) != ''
-              GROUP BY account_number HAVING COUNT(*) > 1
-          )
-    ")->fetchColumn();
-
-    // Count distinct duplicate account numbers
-    $distinctDups = (int)$pdo->query("
-        SELECT COUNT(*) FROM (
-            SELECT account_number FROM unclaimed_assets
-            WHERE account_number IS NOT NULL AND TRIM(account_number) != ''
-            GROUP BY account_number HAVING COUNT(*) > 1
+    // 1. Get total duplicate account count and total affected records in a single fast grouped pass
+    $stats = $pdo->query("
+        SELECT COUNT(*) AS distinct_dups, SUM(cnt) AS total_records FROM (
+            SELECT COUNT(*) AS cnt
+            FROM unclaimed_assets
+            WHERE account_number IS NOT NULL AND account_number != ''
+            GROUP BY account_number
+            HAVING COUNT(*) > 1
         ) t
-    ")->fetchColumn();
+    ")->fetch(PDO::FETCH_ASSOC);
 
-    // Paginated records
+    $distinctDups = (int)($stats['distinct_dups'] ?? 0);
+    $total        = (int)($stats['total_records'] ?? 0);
+
+    // 2. Fetch paginated records using INNER JOIN derived table (leverages index idx_account_no)
     $stmt = $pdo->prepare("
-        SELECT record_id, owner_name, id_passport_no, account_number,
-               date_of_birth, last_transaction, due_amount, compilation_date, status
-        FROM unclaimed_assets
-        WHERE account_number IS NOT NULL
-          AND TRIM(account_number) != ''
-          AND account_number IN (
-              SELECT account_number FROM unclaimed_assets
-              WHERE account_number IS NOT NULL AND TRIM(account_number) != ''
-              GROUP BY account_number HAVING COUNT(*) > 1
-          )
-        ORDER BY account_number ASC, record_id ASC
+        SELECT a.record_id, a.owner_name, a.id_passport_no, a.account_number,
+               a.date_of_birth, a.last_transaction, a.due_amount, a.compilation_date, a.status
+        FROM unclaimed_assets a
+        INNER JOIN (
+            SELECT account_number
+            FROM unclaimed_assets
+            WHERE account_number IS NOT NULL AND account_number != ''
+            GROUP BY account_number
+            HAVING COUNT(*) > 1
+        ) d ON a.account_number = d.account_number
+        ORDER BY a.account_number ASC, a.record_id ASC
         LIMIT :lim OFFSET :off
     ");
     $stmt->bindValue(':lim', $perPage, PDO::PARAM_INT);
@@ -59,7 +53,7 @@ try {
 
     echo json_encode([
         'success'      => true,
-        'records'      => $stmt->fetchAll(),
+        'records'      => $stmt->fetchAll(PDO::FETCH_ASSOC),
         'total'        => $total,
         'distinct_dups'=> $distinctDups,
         'page'         => $page,

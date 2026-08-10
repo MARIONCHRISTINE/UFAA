@@ -292,10 +292,9 @@ require_once __DIR__ . '/includes/admin_layout.php';
                 <label for="status"><i class="fa-solid fa-tags"></i> Claim Status</label>
                 <select name="status" id="status" class="admin-select">
                     <option value="">All Statuses</option>
-                    <option value="Unclaimed"        <?= $statusFilter==='Unclaimed'        ? 'selected':'' ?>>Unclaimed</option>
-                    <option value="Letter Generated" <?= $statusFilter==='Letter Generated' ? 'selected':'' ?>>Letter Generated</option>
-                    <option value="Submitted"        <?= $statusFilter==='Submitted'        ? 'selected':'' ?>>Submitted</option>
-                    <option value="Claimed"          <?= $statusFilter==='Claimed'          ? 'selected':'' ?>>Claimed</option>
+                    <option value="Unclaimed"        <?= $statusFilter==='Unclaimed' ? 'selected':'' ?>>Unclaimed</option>
+                    <option value="Letter Generated" <?= ($statusFilter==='Letter Generated' || $statusFilter==='Letter Issued') ? 'selected':'' ?>>Letter Issued</option>
+                    <option value="Claimed"          <?= $statusFilter==='Claimed'   ? 'selected':'' ?>>Claimed</option>
                 </select>
             </div>
 

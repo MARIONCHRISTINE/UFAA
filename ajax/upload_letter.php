@@ -58,6 +58,8 @@ if (move_uploaded_file($fileTmp, $destPath)) {
     try {
         $stmt = $pdo->prepare("UPDATE `unclaimed_assets` SET `stamped_file_path` = :path WHERE `record_id` = :id");
         $stmt->execute([':path' => $dbPath, ':id' => $recordId]);
+
+        log_activity('patch_upload', "Uploaded stamped letter file '{$fileName}' for Record #{$recordId}", $recordId);
         
         echo json_encode([
             'status' => 'success', 

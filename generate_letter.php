@@ -33,6 +33,9 @@ try {
 
     if (isset($result['status']) && $result['status'] === 'error') {
         throw new Exception($result['message']);
+    } else {
+        $ownerName = $result['record']['owner_name'] ?? '';
+        log_activity('letter_generated', "Downloaded Holder Letter PDF for Record #{$recordId}" . ($ownerName ? " ({$ownerName})" : ""), (int)$recordId);
     }
 
 } catch (Throwable $e) {
