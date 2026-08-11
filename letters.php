@@ -163,27 +163,36 @@ require_once 'includes/layout.php';
                             
                             <!-- Claim Stage -->
                             <td style="text-align: center;">
-                                <span 
-                                    id="badge-status-<?= $asset['record_id'] ?>" 
-                                    class="status-badge <?= strtolower(str_replace(' ', '-', $asset['status'])) ?>" 
-                                    onclick="toggleClaimStatus(<?= $asset['record_id'] ?>, '<?= $asset['status'] ?>')"
-                                    title="Click to toggle claim status"
-                                >
-                                    <?php if ($asset['status'] === 'Claimed'): ?>
-                                        <i class="fa-solid fa-circle-check"></i> <span>Claimed</span>
-                                    <?php elseif ($asset['status'] === 'Letter Generated'): ?>
-                                        <i class="fa-solid fa-file-signature"></i> <span>Letter Issued</span>
-                                    <?php elseif ($asset['status'] === 'Submitted'): ?>
-                                        <i class="fa-solid fa-paper-plane"></i> <span>Submitted</span>
-                                    <?php else: ?>
-                                        <i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>
-                                    <?php endif; ?>
-                                </span>
+                                <?php if ($asset['status'] === 'Claimed'): ?>
+                                    <span
+                                        id="badge-status-<?= $asset['record_id'] ?>"
+                                        class="status-badge claimed"
+                                        style="cursor:default;"
+                                        title="Permanently locked as Claimed"
+                                    >
+                                        <i class="fa-solid fa-lock"></i> <span>Claimed</span>
+                                    </span>
+                                <?php else: ?>
+                                    <span
+                                        id="badge-status-<?= $asset['record_id'] ?>"
+                                        class="status-badge <?= strtolower(str_replace(' ', '-', $asset['status'])) ?>"
+                                        onclick="toggleClaimStatus(<?= $asset['record_id'] ?>, '<?= $asset['status'] ?>')"
+                                        title="Click to change claim status"
+                                    >
+                                        <?php if ($asset['status'] === 'Letter Generated'): ?>
+                                            <i class="fa-solid fa-file-signature"></i> <span>Letter Issued</span>
+                                        <?php elseif ($asset['status'] === 'Submitted'): ?>
+                                            <i class="fa-solid fa-paper-plane"></i> <span>Submitted</span>
+                                        <?php else: ?>
+                                            <i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>
+                                        <?php endif; ?>
+                                    </span>
+                                <?php endif; ?>
                             </td>
 
                             <!-- System-Generated Clean PDF (On-the-fly streaming) -->
                             <td style="text-align: center;">
-                                <a href="view_letter.php?id=<?= $asset['record_id'] ?>" target="_blank" class="btn-pdf-gen" title="View & Print Official Holder Confirmation Letter">
+                                <a href="view_letter.php?id=<?= $asset['record_id'] ?>" target="_blank" onclick="onLetterPrinted(<?= $asset['record_id'] ?>)" class="btn-pdf-gen" title="View & Print Official Holder Confirmation Letter">
                                     <i class="fa-solid fa-print"></i> View / Print Letter
                                 </a>
                             </td>

@@ -169,7 +169,7 @@ require_once 'includes/layout.php';
 
                             <!-- System-Generated Clean PDF (On-the-fly streaming) -->
                             <td style="text-align: center;">
-                                <a href="view_letter.php?id=<?= $asset['record_id'] ?>" target="_blank" class="btn-pdf-gen" title="View & Print Official Holder Confirmation Letter">
+                                <a href="view_letter.php?id=<?= $asset['record_id'] ?>" target="_blank" onclick="onLetterPrinted(<?= $asset['record_id'] ?>)" class="btn-pdf-gen" title="View & Print Official Holder Confirmation Letter">
                                     <i class="fa-solid fa-print"></i> View / Print Letter
                                 </a>
                             </td>

@@ -5,8 +5,13 @@
 <!-- Status Selection Modal -->
 <div class="popup-overlay" id="status-popup-overlay">
     <div class="popup-card">
-        <h3><i class="fa-solid fa-circle-question" style="color:var(--airtel-red)"></i> Select Claim Status</h3>
+        <h3><i class="fa-solid fa-circle-question" style="color:var(--airtel-red)"></i> Update Claim Status</h3>
+        <p style="font-size:.82rem;color:#64748b;margin:-.25rem 0 .75rem;">
+            <i class="fa-solid fa-circle-info" style="color:#2563eb;"></i>
+            Please issue holder letter first to mark claimed.
+        </p>
         <input type="hidden" id="status-popup-record-id">
+        <input type="hidden" id="status-popup-current-status">
         <div class="popup-options">
             <label class="popup-option-label" id="label-status-unclaimed">
                 <input type="radio" name="status-radio" value="Unclaimed" onchange="updateRadioLabels('status')">

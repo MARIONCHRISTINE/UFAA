@@ -85,20 +85,33 @@ function updateRecord(recordId, fieldName, newValue, callback) {
 
 // 4. Interactive Badge Status Toggles via Popups
 function toggleClaimStatus(recordId, currentStatus) {
+    // If already Claimed, show locked notification — no popup
+    if (currentStatus === 'Claimed') {
+        showNotification('error', '\uD83D\uDD12 This record is permanently locked as Claimed and cannot be changed.');
+        return;
+    }
+
+    // Enforce: letter must be issued before claiming
+    if (currentStatus === 'Unclaimed') {
+        showNotification('error', '⚠️ Please issue holder letter first to mark claimed.');
+        return;
+    }
+
     const overlay = document.getElementById('status-popup-overlay');
     if (!overlay) return;
-    
+
     document.getElementById('status-popup-record-id').value = recordId;
-    
-    const unclaimedRadio = document.querySelector('input[name="status-radio"][value="Unclaimed"]');
-    const claimedRadio = document.querySelector('input[name="status-radio"][value="Claimed"]');
-    
-    if (currentStatus === 'Claimed') {
-        if (claimedRadio) claimedRadio.checked = true;
-    } else {
-        if (unclaimedRadio) unclaimedRadio.checked = true;
+    document.getElementById('status-popup-current-status').value = currentStatus;
+
+    // Ensure no radio button is auto-checked so the user must actively choose
+    document.querySelectorAll('input[name="status-radio"]').forEach(r => r.checked = false);
+
+    // Hide Unclaimed option when moving forward from Letter Generated/Submitted
+    const unclaimedLabel = document.getElementById('label-status-unclaimed');
+    if (unclaimedLabel) {
+        unclaimedLabel.style.display = (currentStatus === 'Letter Generated' || currentStatus === 'Submitted') ? 'none' : '';
     }
-    
+
     updateRadioLabels('status');
     overlay.classList.add('show');
 }
@@ -106,14 +119,29 @@ function toggleClaimStatus(recordId, currentStatus) {
 function closeStatusPopup() {
     const overlay = document.getElementById('status-popup-overlay');
     if (overlay) overlay.classList.remove('show');
+    // Clear selection on cancel
+    document.querySelectorAll('input[name="status-radio"]').forEach(r => r.checked = false);
+    updateRadioLabels('status');
 }
 
 function saveStatusPopup() {
-    const recordId = document.getElementById('status-popup-record-id').value;
+    const recordId      = document.getElementById('status-popup-record-id').value;
+    const currentStatus = document.getElementById('status-popup-current-status')?.value || '';
     const selectedRadio = document.querySelector('input[name="status-radio"]:checked');
-    if (!selectedRadio) return;
     
+    if (!selectedRadio) {
+        showNotification('error', 'Please select a status option before saving.');
+        return;
+    }
+
     const nextStatus = selectedRadio.value;
+
+    // Re-validate: Claimed only allowed if letter was issued
+    if (nextStatus === 'Claimed' && currentStatus === 'Unclaimed') {
+        showNotification('error', '⚠️ Please issue holder letter first to mark claimed.');
+        closeStatusPopup();
+        return;
+    }
     const badge = document.getElementById(`badge-status-${recordId}`);
     if (badge) {
         badge.setAttribute('data-loading', 'true');
@@ -125,25 +153,42 @@ function saveStatusPopup() {
         if (!badge) return;
         badge.removeAttribute('data-loading');
         if (success) {
-            const currentBadgeVal = badge.classList.contains('claimed') ? 'Claimed' : 'Unclaimed';
             badge.className = `status-badge ${nextStatus.toLowerCase()}`;
-            badge.setAttribute('onclick', `toggleClaimStatus(${recordId}, '${nextStatus}')`);
             
             if (nextStatus === 'Claimed') {
-                badge.innerHTML = '<i class="fa-solid fa-circle-check"></i> <span>Claimed</span>';
+                // Lock the badge permanently — no more clicks
+                badge.innerHTML = '<i class="fa-solid fa-lock"></i> <span>Claimed</span>';
+                badge.removeAttribute('onclick');
+                badge.style.cursor = 'default';
+                badge.title = 'Permanently locked as Claimed';
+                adjustCounter('stat-claimed', 1);
+                adjustCounter('stat-unclaimed', -1);
             } else {
                 badge.innerHTML = '<i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>';
-            }
-
-            if (currentBadgeVal !== nextStatus) {
-                adjustCounter('stat-claimed', nextStatus === 'Claimed' ? 1 : -1);
-                adjustCounter('stat-unclaimed', nextStatus === 'Unclaimed' ? 1 : -1);
+                badge.setAttribute('onclick', `toggleClaimStatus(${recordId}, '${nextStatus}')`);
+                badge.style.cursor = '';
+                badge.title = 'Click to change claim status';
             }
         } else {
             const isClaimed = badge.classList.contains('claimed');
             badge.innerHTML = isClaimed ? '<i class="fa-solid fa-circle-check"></i> <span>Claimed</span>' : '<i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>';
         }
     });
+}
+
+// Helper: Triggered when "View / Print Letter" is clicked
+function onLetterPrinted(recordId) {
+    setTimeout(() => {
+        const badge = document.getElementById(`badge-status-${recordId}`);
+        if (badge) {
+            badge.className = 'status-badge letter-generated';
+            badge.innerHTML = '<i class="fa-solid fa-file-signature"></i> <span>Letter Issued</span>';
+            badge.setAttribute('onclick', `toggleClaimStatus(${recordId}, 'Letter Generated')`);
+            badge.style.cursor = 'pointer';
+            badge.title = 'Click to change claim status to Claimed';
+        }
+        showNotification('success', '📄 Letter Issued! Status updated to "Letter Issued". You can now click the status badge to mark this record as Claimed.');
+    }, 1000);
 }
 
 function toggleLetterReceived(recordId, currentVal) {

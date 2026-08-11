@@ -138,7 +138,7 @@ try {
         'Compilation Date',
         'Status', 
         'Letter Issued', 
-        'Letter Date', 
+        'Issue Date', 
         'Uploaded At'
     ]);
 
@@ -154,8 +154,8 @@ try {
             $row['due_amount'],
             $row['compilation_date'],
             $row['status'],
-            $row['letter_received'],
-            $row['letter_date'],
+            $row['letter_generated'],
+            $row['letter_generated_date'],
             $row['uploaded_at']
         ]);
     }

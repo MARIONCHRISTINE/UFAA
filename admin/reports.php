@@ -85,7 +85,7 @@ if ($exportType && $pdo) {
             fputcsv($out, [
                 'Record ID', 'Owner Name', 'ID / Passport No', 'Date of Birth',
                 'Account Number', 'Last Transaction Date', 'Due Amount (KSh)', 'Compilation Date',
-                'Claim Status', 'Letter Generated', 'Letter Received', 'Uploaded At'
+                'Claim Status', 'Letter Issued', 'Issue Date', 'Uploaded At'
             ]);
 
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -100,7 +100,7 @@ if ($exportType && $pdo) {
                     $row['compilation_date'],
                     $row['status'],
                     $row['letter_generated'],
-                    $row['letter_received'],
+                    $row['letter_generated_date'],
                     $row['uploaded_at'],
                 ]);
             }
@@ -241,7 +241,7 @@ require_once __DIR__ . '/includes/admin_layout.php';
             <span>Reports</span>
         </div>
         <h2><i class="fa-solid fa-chart-bar" style="color:var(--airtel-red);margin-right:.45rem;"></i>Reports &amp; Data Export</h2>
-        <p>Generate executive audit reports, view multi-year financial trends, and download compliance documents.</p>
+        <p>Generate Airtel Money Kenya statutory compliance returns for filing with the Unclaimed Financial Assets Authority (UFAA).</p>
     </div>
     <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
         <a href="report_pdf.php?<?= http_build_query($_GET) ?>" target="_blank" class="btn-admin-outline" style="font-size:.82rem;color:#CC0000;border-color:rgba(204,0,0,0.3);">
@@ -324,6 +324,36 @@ require_once __DIR__ . '/includes/admin_layout.php';
             </div>
         </div>
     </form>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     EXECUTIVE KPI SUMMARY (Single-Line Cards for Million Values)
+════════════════════════════════════════════════════════════ -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:1rem;margin-bottom:1.5rem;">
+    <div style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid #1e3a5f;border-radius:10px;padding:.85rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <span style="font-size:.8rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Total Accounts</span>
+        <span style="font-size:1.05rem;font-weight:800;color:#1e3a5f;white-space:nowrap;"><?= number_format($totalRecordsInPeriod) ?></span>
+    </div>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid #CC0000;border-radius:10px;padding:.85rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <span style="font-size:.8rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Total Asset Value</span>
+        <span style="font-size:1.05rem;font-weight:800;color:#CC0000;white-space:nowrap;">KSh <?= number_format($totalValInPeriod, 2) ?></span>
+    </div>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid #16a34a;border-radius:10px;padding:.85rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <span style="font-size:.8rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Claimed Value</span>
+        <?php
+        $claimedVal = 0;
+        foreach ($statusTotals as $s) if ($s['status'] === 'Claimed') $claimedVal = $s['sum_amount'];
+        ?>
+        <span style="font-size:1.05rem;font-weight:800;color:#16a34a;white-space:nowrap;">KSh <?= number_format($claimedVal, 2) ?></span>
+    </div>
+    <div style="background:#fff;border:1px solid #e2e8f0;border-left:4px solid #ea580c;border-radius:10px;padding:.85rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <span style="font-size:.8rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">Unclaimed Value</span>
+        <?php
+        $unclaimedVal = 0;
+        foreach ($statusTotals as $s) if ($s['status'] === 'Unclaimed') $unclaimedVal = $s['sum_amount'];
+        ?>
+        <span style="font-size:1.05rem;font-weight:800;color:#ea580c;white-space:nowrap;">KSh <?= number_format($unclaimedVal, 2) ?></span>
+    </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════

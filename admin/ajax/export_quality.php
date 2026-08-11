@@ -15,7 +15,7 @@ $mode   = trim($_GET['mode'] ?? '');
 $limit  = isset($_GET['limit'])  ? max(1, (int)$_GET['limit'])  : 0;
 $offset = isset($_GET['offset']) ? max(0, (int)$_GET['offset']) : 0;
 
-$allowedModes = ['missing_owner', 'missing_id', 'missing_dob', 'missing_account', 'dup_accounts'];
+$allowedModes = ['missing_owner', 'missing_id', 'missing_dob', 'missing_account', 'dup_accounts', 'true_dup', 'recycled'];
 if (!in_array($mode, $allowedModes)) {
     header('Content-Type: application/json');
     echo json_encode(['status' => 'error', 'error' => 'Invalid export mode']);
@@ -44,8 +44,7 @@ try {
     $stmt = $pdo->prepare(
         "SELECT record_id, owner_name, id_passport_no, date_of_birth,
                 account_number, last_transaction, due_amount, compilation_date,
-                status, letter_generated, letter_received, letter_date,
-                letter_generated_date, uploaded_at
+                status, letter_generated, letter_generated_date, uploaded_at
          FROM unclaimed_assets
          WHERE $where
          ORDER BY account_number ASC, record_id ASC" . $limitSQL
@@ -67,8 +66,10 @@ try {
         'missing_id'     => 'Missing_ID_Passport',
         'missing_dob'    => 'Missing_Date_of_Birth',
         'missing_account'=> 'Missing_Account_Number',
-        'dup_accounts'   => 'Duplicate_Account_Numbers',
-    ][$mode];
+        'dup_accounts'   => 'Duplicate_Claims',
+        'true_dup'       => 'Duplicate_Claims',
+        'recycled'       => 'Recycled_SIM_Accounts',
+    ][$mode] ?? 'Quality_Export';
 
     $filename = "UFAA_Admin_{$modeLabel}_" . date('Ymd_His') . $suffix . '.csv';
     header('Content-Type: text/csv; charset=utf-8');
@@ -77,12 +78,11 @@ try {
     $out = fopen('php://output', 'w');
     fprintf($out, chr(0xEF).chr(0xBB).chr(0xBF)); // UTF-8 BOM for Excel
 
-    // Full column headers — matches main portal export
+    // Updated column headers — Letter Issued & Issue Date
     fputcsv($out, [
         'Record ID', 'Owner Name', 'ID / Passport No', 'Date of Birth',
         'Account Number', 'Last Transaction', 'Due Amount', 'Compilation Date',
-        'Status', 'Letter Generated', 'Letter Received', 'Letter Date',
-        'Letter Generated Date', 'Uploaded At'
+        'Status', 'Letter Issued', 'Issue Date', 'Uploaded At'
     ]);
 
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -97,8 +97,6 @@ try {
             $row['compilation_date'],
             $row['status'],
             $row['letter_generated'],
-            $row['letter_received'],
-            $row['letter_date'],
             $row['letter_generated_date'],
             $row['uploaded_at'],
         ]);
@@ -121,11 +119,21 @@ function _build_where(string $mode): string
         case 'missing_dob':     return "date_of_birth IS NULL";
         case 'missing_account': return "account_number IS NULL OR TRIM(account_number) = ''";
         case 'dup_accounts':
+        case 'true_dup':
+            return "account_number IS NOT NULL AND TRIM(account_number) != '' AND id_passport_no IS NOT NULL AND TRIM(id_passport_no) != ''
+                    AND CONCAT(COALESCE(TRIM(account_number),''),'___',COALESCE(TRIM(id_passport_no),''),'___',COALESCE(TRIM(last_transaction),''),'___',COALESCE(TRIM(compilation_date),'')) IN (
+                        SELECT CONCAT(COALESCE(TRIM(account_number),''),'___',COALESCE(TRIM(id_passport_no),''),'___',COALESCE(TRIM(last_transaction),''),'___',COALESCE(TRIM(compilation_date),''))
+                        FROM unclaimed_assets
+                        WHERE account_number IS NOT NULL AND TRIM(account_number) != '' AND id_passport_no IS NOT NULL AND TRIM(id_passport_no) != ''
+                        GROUP BY account_number, id_passport_no, last_transaction, compilation_date
+                        HAVING COUNT(*) > 1
+                    )";
+        case 'recycled':
             return "account_number IS NOT NULL AND TRIM(account_number) != ''
                     AND account_number IN (
                         SELECT account_number FROM unclaimed_assets
                         WHERE account_number IS NOT NULL AND TRIM(account_number) != ''
-                        GROUP BY account_number HAVING COUNT(*) > 1
+                        GROUP BY account_number HAVING COUNT(DISTINCT COALESCE(NULLIF(TRIM(id_passport_no),''), owner_name)) > 1
                     )";
         default: return '1=0';
     }

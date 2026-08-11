@@ -48,7 +48,7 @@ require_once __DIR__ . '/includes/admin_layout.php';
     <div class="stat-card">
         <div class="stat-info">
             <h3><?= $card['label'] ?></h3>
-            <div class="stat-number" id="stat-<?= $card['key'] ?>" data-count="0" style="<?= $card['numStyle'] ?>">—</div>
+            <div class="stat-number" id="stat-<?= $card['key'] ?>" style="<?= $card['numStyle'] ?>">—</div>
             <div class="stat-sub" id="stat-sub-<?= $card['key'] ?>" style="font-size:0.75rem; color:var(--text-muted); margin-top:4px; font-weight:500;">Loading...</div>
         </div>
         <div class="stat-icon <?= $card['iconClass'] ?>">
@@ -114,6 +114,21 @@ function getActionMeta(action) {
 
 let doughnutChart = null;
 
+function animatePercentage(el, targetPct, duration = 800) {
+    const start = performance.now();
+    const target = parseFloat(targetPct) || 0;
+
+    function update(now) {
+        const elapsed  = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased    = 1 - Math.pow(1 - progress, 3);
+        const current  = (target * eased).toFixed(1);
+        el.textContent = current + '%';
+        if (progress < 1) requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+}
+
 async function loadStats() {
     const btn = document.getElementById('btn-refresh-stats');
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading';
@@ -123,45 +138,37 @@ async function loadStats() {
         const d = await AdminAjax.get('ajax/get_stats.php');
         if (!d.success) throw new Error(d.error);
 
-        const pct = (n) => d.total > 0 ? ((n / d.total) * 100).toFixed(1) : '0.0';
+        const pctVal = (n) => d.total > 0 ? (n / d.total) * 100 : 0;
+        const pctStr = (n) => d.total > 0 ? ((n / d.total) * 100).toFixed(1) : '0.0';
 
-        // total — show raw count, sub = breakdown
+        // total — show raw count, sub = breakdown with percentages
         const elTotal = document.getElementById('stat-total');
         const subTotal = document.getElementById('stat-sub-total');
-        if (elTotal) { elTotal.dataset.count = d.total; animateCounter(elTotal, d.total, 900); }
-        if (subTotal) subTotal.innerHTML = `<span style="color:var(--color-green);font-weight:600;">${Number(d.claimed).toLocaleString()} claimed</span> &nbsp;|&nbsp; <span style="color:var(--color-orange);font-weight:600;">${Number(d.unclaimed).toLocaleString()} unclaimed</span>`;
+        if (elTotal) { animateCounter(elTotal, d.total, 900); }
+        if (subTotal) subTotal.innerHTML = `<span style="color:var(--color-green);font-weight:600;">${Number(d.claimed).toLocaleString()} claimed (${pctStr(d.claimed)}%)</span> &nbsp;|&nbsp; <span style="color:var(--color-orange);font-weight:600;">${Number(d.unclaimed).toLocaleString()} unclaimed (${pctStr(d.unclaimed)}%)</span>`;
 
-        // unclaimed — show percentage as headline, count in sub
+        // unclaimed — show percentage headline, count in sub
         const elUnclaimed = document.getElementById('stat-unclaimed');
         const subUnclaimed = document.getElementById('stat-sub-unclaimed');
-        if (elUnclaimed) {
-            elUnclaimed.textContent = pct(d.unclaimed) + '%';
-            elUnclaimed.dataset.count = d.unclaimed;
-        }
+        if (elUnclaimed) { animatePercentage(elUnclaimed, pctVal(d.unclaimed)); }
         if (subUnclaimed) subUnclaimed.textContent = `${Number(d.unclaimed).toLocaleString()} records of ${Number(d.total).toLocaleString()} total`;
 
-        // claimed — show percentage as headline, count in sub
+        // claimed — show percentage headline, count in sub
         const elClaimed = document.getElementById('stat-claimed');
         const subClaimed = document.getElementById('stat-sub-claimed');
-        if (elClaimed) {
-            elClaimed.textContent = pct(d.claimed) + '%';
-            elClaimed.dataset.count = d.claimed;
-        }
+        if (elClaimed) { animatePercentage(elClaimed, pctVal(d.claimed)); }
         if (subClaimed) subClaimed.textContent = `${Number(d.claimed).toLocaleString()} records of ${Number(d.total).toLocaleString()} total`;
 
-        // letters — show percentage coverage as headline, count in sub
+        // letters — show percentage coverage headline, count in sub
         const elLetters = document.getElementById('stat-letters');
         const subLetters = document.getElementById('stat-sub-letters');
-        if (elLetters) {
-            elLetters.textContent = pct(d.letters) + '%';
-            elLetters.dataset.count = d.letters;
-        }
-        if (subLetters) subLetters.textContent = `${Number(d.letters).toLocaleString()} letters issued of ${Number(d.total).toLocaleString()}`;
+        if (elLetters) { animatePercentage(elLetters, pctVal(d.letters)); }
+        if (subLetters) subLetters.textContent = `${Number(d.letters).toLocaleString()} letters issued of ${Number(d.total).toLocaleString()} total`;
 
         // users — show raw count
         const elUsers = document.getElementById('stat-users');
         const subUsers = document.getElementById('stat-sub-users');
-        if (elUsers) { elUsers.dataset.count = d.users; animateCounter(elUsers, d.users, 600); }
+        if (elUsers) { animateCounter(elUsers, d.users, 600); }
         if (subUsers) subUsers.textContent = 'active admin accounts';
 
         // ── Charts ──

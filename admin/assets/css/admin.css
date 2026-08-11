@@ -632,3 +632,84 @@ body.admin-body {
         font-size: 0.7rem !important;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN TOP-ANCHORED TOAST NOTIFICATIONS
+   Override the shared portal toast-container to pin below header
+═══════════════════════════════════════════════════════════════ */
+.admin-body .toast-container,
+.admin-body #toast-holder {
+    position: fixed;
+    top: 72px;          /* just below header */
+    right: 1.5rem;
+    bottom: auto;
+    left: auto;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    max-width: 420px;
+    width: calc(100% - 3rem);
+}
+
+/* Admin-style toasts (used by AdminToast.show()) */
+.admin-body .toast {
+    display: flex;
+    align-items: flex-start;
+    gap: .6rem;
+    background: #fff;
+    border-radius: 10px;
+    padding: .75rem 1rem;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.14);
+    border-left: 4px solid #94a3b8;
+    font-size: .84rem;
+    font-weight: 500;
+    color: #1e293b;
+    opacity: 0;
+    transform: translateX(40px);
+    transition: opacity .25s ease, transform .25s ease;
+    pointer-events: all;
+    max-width: 420px;
+}
+.admin-body .toast-visible {
+    opacity: 1;
+    transform: translateX(0);
+}
+.admin-body .toast-success { border-left-color: #16a34a; }
+.admin-body .toast-success i { color: #16a34a; }
+.admin-body .toast-error   { border-left-color: #dc2626; }
+.admin-body .toast-error i   { color: #dc2626; }
+.admin-body .toast-warning { border-left-color: #ea580c; }
+.admin-body .toast-warning i { color: #ea580c; }
+.admin-body .toast-info    { border-left-color: #2563eb; }
+.admin-body .toast-info i    { color: #2563eb; }
+.admin-body .toast span { flex: 1; line-height: 1.45; }
+.admin-body .toast-close {
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0;
+    font-size: .8rem;
+    flex-shrink: 0;
+    margin-top: .1rem;
+    transition: color .15s;
+}
+.admin-body .toast-close:hover { color: #1e293b; }
+
+/* ── Collapsible reviewed duplicate group row ── */
+.dup-reviewed-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: .5rem;
+    cursor: pointer;
+    user-select: none;
+}
+.dup-reviewed-summary:hover { opacity: .9; }
+.dup-detail-rows { display: none; }
+.dup-detail-rows.open { display: table-row-group; }
+.dup-toggle-icon { transition: transform .2s; font-size: .8rem; }
+.dup-toggle-icon.open { transform: rotate(90deg); }
+

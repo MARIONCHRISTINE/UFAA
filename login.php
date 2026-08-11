@@ -10,16 +10,16 @@ require_once __DIR__ . '/config.php';          // defines BASE_PATH
 require_once __DIR__ . '/admin/includes/admin_auth.php';
 
 $pageTitle = 'Login — UFAA & Airtel Compliance Portal';
-$pdo       = admin_get_pdo();
-$errorMsg  = '';
+$pdo = admin_get_pdo();
+$errorMsg = '';
 if (!empty($_SESSION['login_notice'])) {
     $errorMsg = $_SESSION['login_notice'];
     unset($_SESSION['login_notice']);
 } elseif (isset($_GET['reason']) && $_GET['reason'] === 'timeout') {
     $errorMsg = 'Your session has expired due to inactivity. Please log in again.';
 }
-$username  = '';
-$role      = 'compliance_officer';
+$username = '';
+$role = 'compliance_officer';
 
 // Redirect if already logged in
 if (!empty($_SESSION['admin_logged_in']) && !empty($_SESSION['admin_user'])) {
@@ -31,7 +31,7 @@ if (!empty($_SESSION['admin_logged_in']) && !empty($_SESSION['admin_user'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
-    $role     = trim($_POST['role'] ?? 'compliance_officer');
+    $role = trim($_POST['role'] ?? 'compliance_officer');
 
     if (empty($username) || empty($password)) {
         $errorMsg = 'Please enter your username/email and password.';
@@ -42,40 +42,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$username, $username]);
             $user = $stmt->fetch();
 
-            $maxAttempts = (int)admin_get_setting('max_login_attempts', '5');
+            $maxAttempts = (int) admin_get_setting('max_login_attempts', '5');
 
             if (!$user) {
                 $errorMsg = 'Invalid credentials. User not found.';
                 log_activity('login_failed', "Failed login attempt for '$username': User not found");
-            } elseif ((int)$user['is_active'] !== 1) {
+            } elseif ((int) $user['is_active'] !== 1) {
                 $errorMsg = 'Your account has been locked or deactivated. Please contact an Administrator to reactivate.';
-                log_activity('login_failed', "Failed login attempt for '{$user['username']}': Account is locked/deactivated", (int)$user['id']);
+                log_activity('login_failed', "Failed login attempt for '{$user['username']}': Account is locked/deactivated", (int) $user['id']);
             } elseif (!password_verify($password, $user['password_hash'])) {
-                $newFailed = (int)($user['failed_login_attempts'] ?? 0) + 1;
+                $newFailed = (int) ($user['failed_login_attempts'] ?? 0) + 1;
                 if ($newFailed >= $maxAttempts) {
                     $pdo->prepare("UPDATE admin_users SET is_active = 0, failed_login_attempts = ? WHERE id = ?")->execute([$newFailed, $user['id']]);
                     $errorMsg = "Your account has been locked after {$maxAttempts} consecutive failed login attempts. Please contact an Administrator to reactivate.";
-                    log_activity('user_status_change', "Account for '{$user['username']}' auto-locked after {$maxAttempts} failed login attempts", (int)$user['id']);
+                    log_activity('user_status_change', "Account for '{$user['username']}' auto-locked after {$maxAttempts} failed login attempts", (int) $user['id']);
                 } else {
                     $pdo->prepare("UPDATE admin_users SET failed_login_attempts = ? WHERE id = ?")->execute([$newFailed, $user['id']]);
                     $remaining = $maxAttempts - $newFailed;
                     $errorMsg = "Incorrect password. Warning: {$remaining} attempt(s) remaining before your account is locked.";
-                    log_activity('login_failed', "Failed login attempt for '{$user['username']}': Incorrect password (Attempt {$newFailed}/{$maxAttempts})", (int)$user['id']);
+                    log_activity('login_failed', "Failed login attempt for '{$user['username']}': Incorrect password (Attempt {$newFailed}/{$maxAttempts})", (int) $user['id']);
                 }
             } else {
                 // Verify selected tab role against user's actual assigned DB roles
-                $dbRole       = strtolower($user['role'] ?? '');
+                $dbRole = strtolower($user['role'] ?? '');
                 $selectedRole = in_array($role, ['compliance_admin', 'compliance_officer']) ? $role : 'compliance_officer';
 
-                $hasAdminAccess   = (strpos($dbRole, 'admin') !== false || $dbRole === 'both');
+                $hasAdminAccess = (strpos($dbRole, 'admin') !== false || $dbRole === 'both');
                 $hasOfficerAccess = (strpos($dbRole, 'officer') !== false || $dbRole === 'both');
 
                 if ($selectedRole === 'compliance_admin' && !$hasAdminAccess) {
                     $errorMsg = 'Access denied. You do not have Compliance Administrator privileges. Please select the Compliance Officer tab to sign in.';
-                    log_activity('login_failed', "Failed login attempt for '{$user['username']}': Access denied for Admin portal", (int)$user['id']);
+                    log_activity('login_failed', "Failed login attempt for '{$user['username']}': Access denied for Admin portal", (int) $user['id']);
                 } elseif ($selectedRole === 'compliance_officer' && !$hasOfficerAccess) {
                     $errorMsg = 'Access denied. Your account is registered as a Compliance Administrator. Please select the Compliance Admin tab to sign in.';
-                    log_activity('login_failed', "Failed login attempt for '{$user['username']}': Access denied for Officer portal", (int)$user['id']);
+                    log_activity('login_failed', "Failed login attempt for '{$user['username']}': Access denied for Officer portal", (int) $user['id']);
                 } else {
                     // Reset failed login attempts & update last_login
                     $upd = $pdo->prepare("UPDATE admin_users SET failed_login_attempts = 0, last_login = NOW() WHERE id = ?");
@@ -83,15 +83,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // Establish session with selected role mode
                     $_SESSION['admin_logged_in'] = true;
-                    $_SESSION['admin_user']      = [
-                        'id'       => (int)$user['id'],
+                    $_SESSION['admin_user'] = [
+                        'id' => (int) $user['id'],
                         'fullname' => $user['fullname'] ?: $user['username'],
                         'username' => $user['username'],
-                        'email'    => $user['email'],
-                        'role'     => $selectedRole,
+                        'email' => $user['email'],
+                        'role' => $selectedRole,
                     ];
 
-                    log_activity('login', "User signed in: {$user['username']} as {$selectedRole}", (int)$user['id']);
+                    log_activity('login', "User signed in: {$user['username']} as {$selectedRole}", (int) $user['id']);
 
                     // Redirect to chosen dashboard based on tab selection
                     if ($selectedRole === 'compliance_admin') {
@@ -110,6 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -121,7 +122,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
 
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -211,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .header-brand-divider {
             width: 1px;
             height: 40px;
-            background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.4), transparent);
+            background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.4), transparent);
             flex-shrink: 0;
             margin: 0 0.75rem;
         }
@@ -394,7 +396,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 0.3rem;
         }
 
-        .toggle-password:hover { color: #64748b; }
+        .toggle-password:hover {
+            color: #64748b;
+        }
 
         .auth-meta-row {
             display: flex;
@@ -424,7 +428,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-weight: 700;
         }
 
-        .forgot-link:hover { text-decoration: underline; }
+        .forgot-link:hover {
+            text-decoration: underline;
+        }
 
         .btn-auth-primary {
             width: 100%;
@@ -465,29 +471,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             text-decoration: none;
         }
 
-        .auth-footer a:hover { text-decoration: underline; }
+        .auth-footer a:hover {
+            text-decoration: underline;
+        }
 
         /* ── Responsive Media Queries ── */
         @media (max-width: 768px) {
             body.auth-page {
                 padding: 1rem 0.5rem;
             }
+
             .auth-header.top-header {
                 flex-direction: column;
                 text-align: center;
                 gap: 0.75rem;
                 padding: 1.1rem 1.2rem;
             }
+
             .header-brand-divider {
                 display: none;
             }
+
             .auth-header .header-brand {
                 flex-direction: row;
                 justify-content: center;
             }
+
             .auth-header .header-right {
                 align-items: center;
             }
+
             .auth-body {
                 padding: 2rem 1.5rem;
             }
@@ -497,54 +510,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             body.auth-page {
                 padding: 0.75rem 0.5rem;
             }
+
             .auth-card {
                 border-radius: 16px;
             }
+
             .auth-header.top-header {
                 padding: 1.2rem 1rem;
                 gap: 0.75rem;
             }
+
             .auth-header .brand-logo-icon {
                 width: 44px;
                 height: 44px;
                 font-size: 1.4rem;
                 border-radius: 10px;
             }
+
             .auth-header .brand-text h1 {
                 font-size: 1.2rem;
             }
+
             .auth-header .brand-text p {
                 font-size: 0.68rem;
             }
+
             .header-airtel-logo {
                 height: 26px;
             }
+
             .header-airtel-label {
                 font-size: 0.65rem;
             }
+
             .auth-body {
                 padding: 1.4rem 1.1rem;
             }
+
             .auth-card-title h2 {
                 font-size: 1.25rem;
             }
+
             .auth-role-tabs {
                 grid-template-columns: 1fr;
                 gap: 0.4rem;
             }
+
             .role-tab-btn {
                 padding: 0.65rem 0.5rem;
                 font-size: 0.82rem;
             }
+
             .auth-meta-row {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 0.75rem;
             }
+
             .input-with-icon input {
-                font-size: 16px; /* Avoid mobile browser zoom */
+                font-size: 16px;
+                /* Avoid mobile browser zoom */
                 padding: 0.8rem 0.9rem 0.8rem 2.6rem;
             }
+
             .btn-auth-primary {
                 padding: 0.9rem;
                 font-size: 0.95rem;
@@ -552,118 +580,127 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     </style>
 </head>
+
 <body class="auth-page">
 
-<div class="auth-card">
-    
-    <!-- Top Header Bar -->
-    <header class="auth-header top-header">
-        <div class="header-brand">
-            <div class="brand-logo-icon">U</div>
-            <div class="brand-text">
-                <h1>UFAA Portal</h1>
-                <p>Unclaimed Financial Assets Authority</p>
-            </div>
-        </div>
+    <div class="auth-card">
 
-        <div class="header-brand-divider"></div>
-
-        <div class="header-right">
-            <div class="header-airtel-logo-wrap">
-                <img src="logo.png" alt="Airtel Logo" class="header-airtel-logo">
-            </div>
-            <span class="header-airtel-label">Airtel Internal Compliance Portal</span>
-        </div>
-    </header>
-
-    <div class="auth-body">
-        
-        <div class="auth-card-title">
-            <h2>Portal Sign In</h2>
-            <p>Access your UFAA compliance account</p>
-        </div>
-
-        <?php if ($errorMsg !== ''): ?>
-            <div class="alert-box">
-                <i class="fa-solid fa-circle-exclamation" style="font-size:1.1rem;"></i>
-                <span><?= htmlspecialchars($errorMsg) ?></span>
-            </div>
-        <?php endif; ?>
-
-        <!-- Role Quick Selection Tabs -->
-        <div class="auth-role-tabs">
-            <button type="button" class="role-tab-btn <?= $role === 'compliance_officer' ? 'active' : '' ?>" onclick="selectRole('compliance_officer', this)">
-                <i class="fa-solid fa-user-check"></i> Compliance Officer
-            </button>
-            <button type="button" class="role-tab-btn <?= $role === 'compliance_admin' ? 'active' : '' ?>" onclick="selectRole('compliance_admin', this)">
-                <i class="fa-solid fa-shield-halved"></i> Compliance Admin
-            </button>
-        </div>
-
-        <form method="POST" action="login.php">
-            <input type="hidden" name="role" id="selected_role" value="<?= htmlspecialchars($role) ?>">
-
-            <!-- Username or Email -->
-            <div class="auth-form-group">
-                <label for="username">Username or Email</label>
-                <div class="input-with-icon">
-                    <i class="fa-solid fa-user field-icon"></i>
-                    <input type="text" name="username" id="username" placeholder="e.g. jwanjiku or officer@airtel.com" value="<?= htmlspecialchars($username) ?>" required autocomplete="username">
+        <!-- Top Header Bar -->
+        <header class="auth-header top-header">
+            <div class="header-brand">
+                <div class="brand-logo-icon">U</div>
+                <div class="brand-text">
+                    <h1>UFAA Portal</h1>
+                    <p>Unclaimed Financial Assets Authority</p>
                 </div>
             </div>
 
-            <!-- Password -->
-            <div class="auth-form-group">
-                <label for="password">Password</label>
-                <div class="input-with-icon">
-                    <i class="fa-solid fa-lock field-icon"></i>
-                    <input type="password" name="password" id="password" placeholder="Enter your password" required autocomplete="current-password">
-                    <button type="button" class="toggle-password" onclick="togglePassVisibility('password', this)">
-                        <i class="fa-regular fa-eye"></i>
-                    </button>
+            <div class="header-brand-divider"></div>
+
+            <div class="header-right">
+                <div class="header-airtel-logo-wrap">
+                    <img src="logo.png" alt="Airtel Logo" class="header-airtel-logo">
                 </div>
+                <span class="header-airtel-label">Airtel Internal Compliance Portal</span>
+            </div>
+        </header>
+
+        <div class="auth-body">
+
+            <div class="auth-card-title">
+                <h2>Portal Sign In</h2>
+                <p>Access your UFAA compliance account</p>
             </div>
 
-            <!-- Remember Me & Forgot Password -->
-            <div class="auth-meta-row">
-                <label class="remember-label">
-                    <input type="checkbox" name="remember" value="1">
-                    <span>Remember me</span>
-                </label>
-                <a href="#" onclick="alert('For password resets, please contact your Compliance Administrator.'); return false;" class="forgot-link">Forgot password?</a>
+            <?php if ($errorMsg !== ''): ?>
+                <div class="alert-box">
+                    <i class="fa-solid fa-circle-exclamation" style="font-size:1.1rem;"></i>
+                    <span><?= htmlspecialchars($errorMsg) ?></span>
+                </div>
+            <?php endif; ?>
+
+            <!-- Role Quick Selection Tabs -->
+            <div class="auth-role-tabs">
+                <button type="button" class="role-tab-btn <?= $role === 'compliance_officer' ? 'active' : '' ?>"
+                    onclick="selectRole('compliance_officer', this)">
+                    <i class="fa-solid fa-user-check"></i> Compliance Officer
+                </button>
+                <button type="button" class="role-tab-btn <?= $role === 'compliance_admin' ? 'active' : '' ?>"
+                    onclick="selectRole('compliance_admin', this)">
+                    <i class="fa-solid fa-shield-halved"></i> Compliance Admin
+                </button>
             </div>
 
-            <!-- Submit Button -->
-            <button type="submit" class="btn-auth-primary">
-                <i class="fa-solid fa-right-to-bracket"></i> Sign In to Portal
-            </button>
-        </form>
+            <form method="POST" action="login.php">
+                <input type="hidden" name="role" id="selected_role" value="<?= htmlspecialchars($role) ?>">
 
-        <div class="auth-footer">
-            Don't have an account? <a href="register.php">Register Here</a>
+                <!-- Username or Email -->
+                <div class="auth-form-group">
+                    <label for="username">Username or Email</label>
+                    <div class="input-with-icon">
+                        <i class="fa-solid fa-user field-icon"></i>
+                        <input type="text" name="username" id="username"
+                            placeholder="e.g. jwanjiku or officer@airtel.com" value="<?= htmlspecialchars($username) ?>"
+                            required autocomplete="username">
+                    </div>
+                </div>
+
+                <!-- Password -->
+                <div class="auth-form-group">
+                    <label for="password">Password</label>
+                    <div class="input-with-icon">
+                        <i class="fa-solid fa-lock field-icon"></i>
+                        <input type="password" name="password" id="password" placeholder="Enter your password" required
+                            autocomplete="current-password">
+                        <button type="button" class="toggle-password" onclick="togglePassVisibility('password', this)">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Remember Me & Forgot Password -->
+                <div class="auth-meta-row">
+                    <label class="remember-label">
+                        <input type="checkbox" name="remember" value="1">
+                        <span>Remember me</span>
+                    </label>
+                    <a href="#"
+                        onclick="alert('For password resets, please contact your Compliance Administrator.'); return false;"
+                        class="forgot-link">Forgot password?</a>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="btn-auth-primary">
+                    <i class="fa-solid fa-right-to-bracket"></i> Sign In to Portal
+                </button>
+            </form>
+
+            <div class="auth-footer">
+                Don't have an account? <a href="register.php">Register Here</a>
+            </div>
         </div>
     </div>
-</div>
 
-<script>
-function selectRole(role, btn) {
-    document.getElementById('selected_role').value = role;
-    document.querySelectorAll('.role-tab-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-}
+    <script>
+        function selectRole(role, btn) {
+            document.getElementById('selected_role').value = role;
+            document.querySelectorAll('.role-tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        }
 
-function togglePassVisibility(inputId, btn) {
-    const input = document.getElementById(inputId);
-    const icon = btn.querySelector('i');
-    if (input.type === 'password') {
-        input.type = 'text';
-        icon.className = 'fa-regular fa-eye-slash';
-    } else {
-        input.type = 'password';
-        icon.className = 'fa-regular fa-eye';
-    }
-}
-</script>
+        function togglePassVisibility(inputId, btn) {
+            const input = document.getElementById(inputId);
+            const icon = btn.querySelector('i');
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.className = 'fa-regular fa-eye-slash';
+            } else {
+                input.type = 'password';
+                icon.className = 'fa-regular fa-eye';
+            }
+        }
+    </script>
 
 </body>
+
 </html>

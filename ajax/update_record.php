@@ -91,6 +91,26 @@ try {
     $ownerName = $existingRecord['owner_name'] ?? '';
     $oldStatus = $existingRecord['status'] ?? '';
 
+    // LOCK: Once a record is marked Claimed, it cannot be changed back
+    if ($fieldName === 'status' && $oldStatus === 'Claimed') {
+        http_response_code(403);
+        echo json_encode([
+            'status'  => 'error',
+            'message' => 'This record has been marked as Claimed and is permanently locked. Status cannot be changed.'
+        ]);
+        exit;
+    }
+
+    // GUARD: Cannot set Claimed unless letter has been issued first
+    if ($fieldName === 'status' && $newValue === 'Claimed' && $oldStatus === 'Unclaimed') {
+        http_response_code(403);
+        echo json_encode([
+            'status'  => 'error',
+            'message' => 'Please issue holder letter first to mark claimed.'
+        ]);
+        exit;
+    }
+
     // Perform parameterized update securely using whitelisted field name
     $stmt = $pdo->prepare("UPDATE `unclaimed_assets` SET `$fieldName` = :val WHERE `record_id` = :id");
     $stmt->execute([
