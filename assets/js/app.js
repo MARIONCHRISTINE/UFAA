@@ -7,17 +7,17 @@
 function showNotification(type, message) {
     const container = document.getElementById('toast-holder');
     if (!container) return;
-    
+
     const toast = document.createElement('div');
     toast.className = `toast-notification ${type}`;
-    
-    const icon = type === 'success' 
-        ? '<i class="fa-solid fa-circle-check"></i>' 
+
+    const icon = type === 'success'
+        ? '<i class="fa-solid fa-circle-check"></i>'
         : '<i class="fa-solid fa-circle-xmark"></i>';
-        
+
     toast.innerHTML = `${icon} <span>${message}</span>`;
     container.appendChild(toast);
-    
+
     // Auto-remove toast after 4 seconds
     setTimeout(() => {
         toast.style.animation = 'fadeOut 0.4s forwards';
@@ -31,10 +31,10 @@ function showNotification(type, message) {
 function runSetup() {
     const btn = document.getElementById('setup-btn');
     if (!btn) return;
-    
+
     btn.disabled = true;
     btn.innerHTML = '<i class="badge-spinner"></i> Initializing DB...';
-    
+
     fetch('init_db.php')
         .then(res => res.json())
         .then(data => {
@@ -67,20 +67,20 @@ function updateRecord(recordId, fieldName, newValue, callback) {
         method: 'POST',
         body: formData
     })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === 'success') {
-            if (callback) callback(true, data);
-            showNotification('success', data.message);
-        } else {
-            if (callback) callback(false, data);
-            showNotification('error', data.message || 'Update failed.');
-        }
-    })
-    .catch(err => {
-        if (callback) callback(false, err);
-        showNotification('error', 'Update failed due to network issue.');
-    });
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                if (callback) callback(true, data);
+                showNotification('success', data.message);
+            } else {
+                if (callback) callback(false, data);
+                showNotification('error', data.message || 'Update failed.');
+            }
+        })
+        .catch(err => {
+            if (callback) callback(false, err);
+            showNotification('error', 'Update failed due to network issue.');
+        });
 }
 
 // 4. Interactive Badge Status Toggles via Popups
@@ -125,10 +125,10 @@ function closeStatusPopup() {
 }
 
 function saveStatusPopup() {
-    const recordId      = document.getElementById('status-popup-record-id').value;
+    const recordId = document.getElementById('status-popup-record-id').value;
     const currentStatus = document.getElementById('status-popup-current-status')?.value || '';
     const selectedRadio = document.querySelector('input[name="status-radio"]:checked');
-    
+
     if (!selectedRadio) {
         showNotification('error', 'Please select a status option before saving.');
         return;
@@ -147,14 +147,14 @@ function saveStatusPopup() {
         badge.setAttribute('data-loading', 'true');
         badge.innerHTML = '<i class="badge-spinner"></i> <span>Saving...</span>';
     }
-    
+
     updateRecord(recordId, 'status', nextStatus, (success, data) => {
         closeStatusPopup();
         if (!badge) return;
         badge.removeAttribute('data-loading');
         if (success) {
             badge.className = `status-badge ${nextStatus.toLowerCase()}`;
-            
+
             if (nextStatus === 'Claimed') {
                 // Lock the badge permanently — no more clicks
                 badge.innerHTML = '<i class="fa-solid fa-lock"></i> <span>Claimed</span>';
@@ -176,36 +176,59 @@ function saveStatusPopup() {
     });
 }
 
-// Helper: Triggered when "View / Print Letter" is clicked
+// Helper: Triggered when "View / Print Letter" is clicked — auto-sets status to Claimed + locks
 function onLetterPrinted(recordId) {
     setTimeout(() => {
         const badge = document.getElementById(`badge-status-${recordId}`);
+
+        // Already claimed — nothing to do
+        if (badge && badge.classList.contains('claimed')) return;
+
+        // Show saving state
         if (badge) {
-            badge.className = 'status-badge letter-generated';
-            badge.innerHTML = '<i class="fa-solid fa-file-signature"></i> <span>Letter Issued</span>';
-            badge.setAttribute('onclick', `toggleClaimStatus(${recordId}, 'Letter Generated')`);
-            badge.style.cursor = 'pointer';
-            badge.title = 'Click to change claim status to Claimed';
+            badge.innerHTML = '<i class="badge-spinner"></i> <span>Saving...</span>';
+            badge.setAttribute('data-loading', 'true');
         }
-        showNotification('success', '📄 Letter Issued! Status updated to "Letter Issued". You can now click the status badge to mark this record as Claimed.');
-    }, 1000);
+
+        updateRecord(recordId, 'status', 'Claimed', (success) => {
+            if (!badge) return;
+            badge.removeAttribute('data-loading');
+            if (success) {
+                // Lock badge as Claimed permanently
+                badge.className = 'status-badge claimed';
+                badge.innerHTML = '<i class="fa-solid fa-lock"></i> <span>Claimed</span>';
+                badge.removeAttribute('onclick');
+                badge.style.cursor = 'default';
+                badge.title = 'Permanently locked as Claimed';
+                showNotification('success', '✅ Holder letter generated — status automatically set to Claimed and locked.');
+            } else {
+                // Revert to unclaimed on failure
+                badge.className = 'status-badge unclaimed';
+                badge.innerHTML = '<i class="fa-solid fa-hourglass-half"></i> <span>Unclaimed</span>';
+                badge.setAttribute('onclick', `toggleClaimStatus(${recordId}, 'Unclaimed')`);
+                badge.style.cursor = 'pointer';
+                showNotification('error', '⚠️ Letter opened but status update failed. Please refresh and try again.');
+            }
+        });
+    }, 800);
 }
+
 
 function toggleLetterReceived(recordId, currentVal) {
     const overlay = document.getElementById('letter-popup-overlay');
     if (!overlay) return;
-    
+
     document.getElementById('letter-popup-record-id').value = recordId;
-    
+
     const noRadio = document.querySelector('input[name="letter-radio"][value="No"]');
     const yesRadio = document.querySelector('input[name="letter-radio"][value="Yes"]');
-    
+
     if (currentVal === 'Yes') {
         if (yesRadio) yesRadio.checked = true;
     } else {
         if (noRadio) noRadio.checked = true;
     }
-    
+
     updateRadioLabels('letter');
     overlay.classList.add('show');
 }
@@ -219,14 +242,14 @@ function saveLetterPopup() {
     const recordId = document.getElementById('letter-popup-record-id').value;
     const selectedRadio = document.querySelector('input[name="letter-radio"]:checked');
     if (!selectedRadio) return;
-    
+
     const nextVal = selectedRadio.value;
     const badge = document.getElementById(`badge-letter-${recordId}`);
     if (badge) {
         badge.setAttribute('data-loading', 'true');
         badge.innerHTML = '<i class="badge-spinner"></i> <span>Saving...</span>';
     }
-    
+
     updateRecord(recordId, 'letter_received', nextVal, (success, data) => {
         closeLetterPopup();
         if (!badge) return;
@@ -235,7 +258,7 @@ function saveLetterPopup() {
             const currentBadgeVal = badge.classList.contains('letter-yes') ? 'Yes' : 'No';
             badge.className = `status-badge letter-${nextVal.toLowerCase()}`;
             badge.setAttribute('onclick', `toggleLetterReceived(${recordId}, '${nextVal}')`);
-            
+
             if (nextVal === 'Yes') {
                 badge.innerHTML = '<i class="fa-solid fa-envelope-open-text"></i> <span>Yes</span>';
             } else {
@@ -284,7 +307,7 @@ function updateRadioLabels(type) {
 document.addEventListener('DOMContentLoaded', () => {
     const statusOverlay = document.getElementById('status-popup-overlay');
     const letterOverlay = document.getElementById('letter-popup-overlay');
-    
+
     if (statusOverlay) {
         statusOverlay.addEventListener('click', (e) => {
             if (e.target === statusOverlay) closeStatusPopup();
@@ -301,10 +324,10 @@ document.addEventListener('DOMContentLoaded', () => {
 function adjustCounter(elementId, changeAmount) {
     const el = document.getElementById(elementId);
     if (!el) return;
-    
+
     let value = parseInt(el.innerText.replace(/,/g, ''));
     if (isNaN(value)) value = 0;
-    
+
     value = Math.max(0, value + changeAmount);
     el.innerText = value.toLocaleString();
 }
@@ -414,15 +437,15 @@ function showPreview(file) {
     }
 
     selectedExcelFile = file;
-    
+
     // Switch UI views
     document.getElementById('upload-default-view').style.display = 'none';
     document.getElementById('upload-approved-view').style.display = 'none';
     document.getElementById('upload-progress-container').style.display = 'none';
-    
+
     const previewView = document.getElementById('upload-preview-view');
     previewView.style.display = 'block';
-    
+
     // Populate preview details
     document.getElementById('preview-filename').innerText = file.name;
     const sizeKB = (file.size / 1024).toFixed(1);
@@ -432,7 +455,7 @@ function showPreview(file) {
 function cancelUpload() {
     selectedExcelFile = null;
     document.getElementById('file-input').value = '';
-    
+
     document.getElementById('upload-preview-view').style.display = 'none';
     document.getElementById('upload-approved-view').style.display = 'none';
     document.getElementById('upload-progress-container').style.display = 'none';
@@ -471,7 +494,7 @@ function uploadExcelFile(file) {
     formData.append('excel', file);
 
     const xhr = new XMLHttpRequest();
-    
+
     // Track file upload progress
     xhr.upload.addEventListener('progress', e => {
         if (e.lengthComputable && progressContainer) {
@@ -490,14 +513,14 @@ function uploadExcelFile(file) {
         let response = {};
         try {
             response = JSON.parse(xhr.responseText);
-        } catch(e) {
+        } catch (e) {
             response = { status: 'error', message: 'Parser produced unexpected server response.' };
         }
 
         if (xhr.status === 200 && response.status === 'success') {
             showNotification('success', response.message);
             if (progressContainer) progressContainer.style.display = 'none';
-            
+
             // Show Approved View
             document.getElementById('upload-approved-view').style.display = 'block';
             document.getElementById('approved-message').innerText = response.message;
@@ -548,35 +571,35 @@ function uploadLetter(recordId, inputElement) {
         method: 'POST',
         body: formData
     })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === 'success') {
-            showNotification('success', 'Stamped copy uploaded successfully!');
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showNotification('success', 'Stamped copy uploaded successfully!');
 
-            // Dynamically update the View Attached link without reloading
-            const attachArea = document.getElementById('attach-area-' + recordId);
-            if (attachArea && data.file_path) {
-                const oldLink = attachArea.querySelector('.stamped-view-link');
-                if (oldLink) oldLink.remove();
-                const placeholder = attachArea.querySelector('.stamped-view-link-placeholder');
-                if (placeholder) placeholder.remove();
+                // Dynamically update the View Attached link without reloading
+                const attachArea = document.getElementById('attach-area-' + recordId);
+                if (attachArea && data.file_path) {
+                    const oldLink = attachArea.querySelector('.stamped-view-link');
+                    if (oldLink) oldLink.remove();
+                    const placeholder = attachArea.querySelector('.stamped-view-link-placeholder');
+                    if (placeholder) placeholder.remove();
 
-                const link = document.createElement('a');
-                link.href = data.file_path;
-                link.target = '_blank';
-                link.className = 'stamped-view-link';
-                link.title = 'View Stamped/Attached Copy';
-                link.style.cssText = 'font-size:0.82rem; font-weight:700; color:var(--airtel-red); text-decoration:none; display:inline-flex; align-items:center; gap:4px;';
-                link.innerHTML = '<i class="fa-solid fa-file-circle-check"></i> View Stamped Copy';
-                attachArea.appendChild(link);
+                    const link = document.createElement('a');
+                    link.href = data.file_path;
+                    link.target = '_blank';
+                    link.className = 'stamped-view-link';
+                    link.title = 'View Stamped/Attached Copy';
+                    link.style.cssText = 'font-size:0.82rem; font-weight:700; color:var(--airtel-red); text-decoration:none; display:inline-flex; align-items:center; gap:4px;';
+                    link.innerHTML = '<i class="fa-solid fa-file-circle-check"></i> View Stamped Copy';
+                    attachArea.appendChild(link);
+                }
+            } else {
+                showNotification('error', data.message);
             }
-        } else {
-            showNotification('error', data.message);
-        }
-    })
-    .catch(() => {
-        showNotification('error', 'Network error during upload.');
-    });
+        })
+        .catch(() => {
+            showNotification('error', 'Network error during upload.');
+        });
 
     // Clear input so same file can be re-selected
     inputElement.value = '';
@@ -585,7 +608,7 @@ function uploadLetter(recordId, inputElement) {
 // 8. Textarea Auto-submit on Enter key
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('form.filters-panel textarea').forEach(textarea => {
-        textarea.addEventListener('keydown', function(e) {
+        textarea.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 this.form.submit();
@@ -656,7 +679,7 @@ function showExportProgressModal(totalChunks) {
         overlay.style.zIndex = '99999';
         overlay.style.opacity = '0';
         overlay.style.transition = 'opacity 0.3s ease';
-        
+
         const card = document.createElement('div');
         card.style.background = '#ffffff';
         card.style.borderRadius = '16px';
@@ -666,7 +689,7 @@ function showExportProgressModal(totalChunks) {
         card.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
         card.style.textAlign = 'center';
         card.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-        
+
         card.innerHTML = `
             <div style="font-size: 3.5rem; color: #10b981; margin-bottom: 1.5rem; animation: pulse 2s infinite;">
                 <i class="fa-solid fa-file-arrow-down"></i>
@@ -683,7 +706,7 @@ function showExportProgressModal(totalChunks) {
         `;
         overlay.appendChild(card);
         document.body.appendChild(overlay);
-        
+
         // Force reflow and add class
         overlay.offsetHeight;
         overlay.style.opacity = '1';
@@ -701,7 +724,7 @@ function updateExportProgress(currentChunk, totalChunks) {
     const progressBar = document.getElementById('export-progress-bar');
     const progressText = document.getElementById('export-progress-text');
     const progressInfo = document.getElementById('export-progress-info');
-    
+
     if (progressBar) progressBar.style.width = `${pct}%`;
     if (progressText) progressText.innerText = `Downloading Part ${currentChunk} of ${totalChunks} (200,000 rows)...`;
     if (progressInfo) progressInfo.innerText = `${pct}% Completed`;
@@ -719,7 +742,7 @@ function hideExportProgressModal() {
 
 function triggerChunkedExport(queryString) {
     showNotification('success', 'Calculating export size...');
-    
+
     fetch(`ajax/export.php?get_count=1&${queryString}`)
         .then(res => {
             if (!res.ok) throw new Error('Failed to get export count.');
@@ -730,13 +753,13 @@ function triggerChunkedExport(queryString) {
                 showNotification('error', data.message || 'Error getting export count.');
                 return;
             }
-            
+
             const totalCount = data.count;
             if (totalCount === 0) {
                 showNotification('error', 'No matching records found to export.');
                 return;
             }
-            
+
             const chunkSize = 200000;
             if (totalCount <= chunkSize) {
                 // Regular single-file download
@@ -745,17 +768,17 @@ function triggerChunkedExport(queryString) {
                 // Chunked download
                 const totalChunks = Math.ceil(totalCount / chunkSize);
                 showExportProgressModal(totalChunks);
-                
+
                 let currentChunk = 0;
-                
+
                 function downloadNextChunk() {
                     if (currentChunk < totalChunks) {
                         const offset = currentChunk * chunkSize;
                         const chunkNum = currentChunk + 1;
-                        
+
                         // Update progress UI
                         updateExportProgress(chunkNum, totalChunks);
-                        
+
                         // Trigger download by creating dynamic link
                         const downloadUrl = `ajax/export.php?${queryString}&offset=${offset}&limit=${chunkSize}&chunk_num=${chunkNum}&total_chunks=${totalChunks}`;
                         const link = document.createElement('a');
@@ -764,7 +787,7 @@ function triggerChunkedExport(queryString) {
                         document.body.appendChild(link);
                         link.click();
                         document.body.removeChild(link);
-                        
+
                         currentChunk++;
                         // Delay 1.2 seconds to avoid browser popup/multiple download blocks
                         setTimeout(downloadNextChunk, 1200);
@@ -776,7 +799,7 @@ function triggerChunkedExport(queryString) {
                         }, 1000);
                     }
                 }
-                
+
                 // Start the loop
                 setTimeout(downloadNextChunk, 500);
             }

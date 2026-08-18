@@ -8,6 +8,7 @@ $activePage = $activePage ?? 'home';
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,7 +17,8 @@ $activePage = $activePage ?? 'home';
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
 
     <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -25,93 +27,100 @@ $activePage = $activePage ?? 'home';
     <?php $cssVersion = file_exists(__DIR__ . '/../assets/css/style.css') ? filemtime(__DIR__ . '/../assets/css/style.css') : time(); ?>
     <link rel="stylesheet" href="assets/css/style.css?v=<?= $cssVersion ?>">
 </head>
+
 <body>
 
-<!-- ═══════════════════════════════════════════════════════
+    <!-- ═══════════════════════════════════════════════════════
      TOP HEADER BAR
 ══════════════════════════════════════════════════════════ -->
-<header class="top-header">
-    <div class="header-brand">
-        <!-- Mobile Hamburger Button -->
-        <button class="mobile-menu-toggle" id="mobile-menu-btn" aria-label="Toggle Menu">
-            <i class="fa-solid fa-bars"></i>
-        </button>
-        <div class="brand-logo-icon">U</div>
-        <div class="brand-text">
-            <h1>UFAA Portal</h1>
-            <p>Unclaimed Financial Assets Authority</p>
+    <header class="top-header">
+        <div class="header-brand">
+            <!-- Mobile Hamburger Button -->
+            <button class="mobile-menu-toggle" id="mobile-menu-btn" aria-label="Toggle Menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="brand-logo-icon">U</div>
+            <div class="brand-text">
+                <h1>UFAA Portal</h1>
+                <p>Unclaimed Financial Assets Authority</p>
+            </div>
         </div>
-    </div>
 
-    <!-- Divider -->
-    <div class="header-brand-divider"></div>
+        <!-- Divider -->
+        <div class="header-brand-divider"></div>
 
-    <!-- Airtel Co-branding -->
-    <div class="header-right">
-        <div class="header-airtel-logo-wrap">
-            <img src="logo.png" alt="Airtel Logo" class="header-airtel-logo">
+        <!-- Airtel Co-branding -->
+        <div class="header-right">
+            <div class="header-airtel-logo-wrap">
+                <img src="logo.png" alt="Airtel Logo" class="header-airtel-logo">
+            </div>
+            <span class="header-airtel-label">Airtel Internal Compliance Portal</span>
         </div>
-        <span class="header-airtel-label">Airtel Internal Compliance Portal</span>
-    </div>
-</header>
+    </header>
 
-<!-- ═══════════════════════════════════════════════════════
+    <!-- ═══════════════════════════════════════════════════════
      PAGE WRAPPER: Sidebar + Main Content
 ══════════════════════════════════════════════════════════ -->
-<div class="page-wrapper">
+    <div class="page-wrapper">
 
-    <!-- ── SIDEBAR ── -->
-    <aside class="sidebar">
-        <nav class="sidebar-nav">
+        <!-- ── SIDEBAR ── -->
+        <aside class="sidebar">
+            <nav class="sidebar-nav">
 
-            <div class="nav-section-label">Navigation</div>
+                <div class="nav-section-label">Navigation</div>
 
-            <a href="index.php" class="nav-item <?= $activePage === 'home' ? 'active' : '' ?>">
-                <i class="fa-solid fa-house"></i>
-                <span>Home</span>
-            </a>
+                <a href="index.php" class="nav-item <?= $activePage === 'home' ? 'active' : '' ?>">
+                    <i class="fa-solid fa-house"></i>
+                    <span>Home</span>
+                </a>
 
-            <a href="claimed.php" class="nav-item <?= $activePage === 'claimed' ? 'active' : '' ?>">
-                <i class="fa-solid fa-circle-check"></i>
-                <span>Claimed Assets</span>
-            </a>
+                <a href="claimed.php" class="nav-item <?= $activePage === 'claimed' ? 'active' : '' ?>">
+                    <i class="fa-solid fa-circle-check"></i>
+                    <span>Claimed Assets</span>
+                </a>
 
-            <a href="unclaimed.php" class="nav-item <?= $activePage === 'unclaimed' ? 'active' : '' ?>">
-                <i class="fa-solid fa-hourglass-half"></i>
-                <span>Unclaimed Assets</span>
-            </a>
+                <a href="unclaimed.php" class="nav-item <?= $activePage === 'unclaimed' ? 'active' : '' ?>">
+                    <i class="fa-solid fa-hourglass-half"></i>
+                    <span>Unclaimed Assets</span>
+                </a>
 
-            <a href="letters.php" class="nav-item <?= $activePage === 'letters' ? 'active' : '' ?>">
-                <i class="fa-solid fa-file-pdf"></i>
-                <span>Letters Issued</span>
-            </a>
+                <a href="data_preparation.php" class="nav-item <?= $activePage === 'data_prep' ? 'active' : '' ?>">
+                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                    <span>Data Upload</span>
+                </a>
 
-        </nav>
+                <a href="letters.php" class="nav-item <?= $activePage === 'letters' ? 'active' : '' ?>">
+                    <i class="fa-solid fa-file-pdf"></i>
+                    <span>Letters Issued</span>
+                </a>
 
-        <!-- Profile + Logout -->
-        <div class="sidebar-footer">
-            <!-- Profile card -->
-            <?php
-                $__u        = $_SESSION['admin_user'] ?? [];
-                $__display  = htmlspecialchars($__u['username'] ?? 'User');
+            </nav>
+
+            <!-- Profile + Logout -->
+            <div class="sidebar-footer">
+                <!-- Profile card -->
+                <?php
+                $__u = $_SESSION['admin_user'] ?? [];
+                $__display = htmlspecialchars($__u['username'] ?? 'User');
                 $__fullname = $__u['fullname'] ?? $__u['username'] ?? 'U';
-                $__role     = ($__u['role'] ?? '') === 'compliance_admin' ? 'Compliance Admin' : 'Compliance Officer';
-                $__initials = strtoupper(implode('', array_map(function($w){ return $w[0]; }, array_slice(explode(' ', trim($__fullname)), 0, 2))));
-            ?>
-            <div class="sidebar-profile">
-                <div class="sidebar-avatar"><?= $__initials ?: 'U' ?></div>
-                <div class="sidebar-profile-info">
-                    <span class="sidebar-profile-name"><?= $__display ?></span>
-                    <span class="sidebar-profile-role"><?= $__role ?></span>
+                $__role = ($__u['role'] ?? '') === 'compliance_admin' ? 'Compliance Admin' : 'Compliance Officer';
+                $__initials = strtoupper(implode('', array_map(function ($w) {
+                    return $w[0]; }, array_slice(explode(' ', trim($__fullname)), 0, 2))));
+                ?>
+                <div class="sidebar-profile">
+                    <div class="sidebar-avatar"><?= $__initials ?: 'U' ?></div>
+                    <div class="sidebar-profile-info">
+                        <span class="sidebar-profile-name"><?= $__display ?></span>
+                        <span class="sidebar-profile-role"><?= $__role ?></span>
+                    </div>
                 </div>
+                <!-- Logout -->
+                <a href="logout.php" class="nav-item nav-logout">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span>Logout</span>
+                </a>
             </div>
-            <!-- Logout -->
-            <a href="logout.php" class="nav-item nav-logout">
-                <i class="fa-solid fa-right-from-bracket"></i>
-                <span>Logout</span>
-            </a>
-        </div>
-    </aside>
+        </aside>
 
-    <!-- ── MAIN CONTENT AREA ── -->
-    <main class="main-content">
+        <!-- ── MAIN CONTENT AREA ── -->
+        <main class="main-content">

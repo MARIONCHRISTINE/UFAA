@@ -19,9 +19,13 @@ try {
     // Total records
     $total = (int) $pdo->query("SELECT COUNT(*) FROM unclaimed_assets")->fetchColumn();
 
-    // Claimed vs Unclaimed
-    $claimed   = (int) $pdo->query("SELECT COUNT(*) FROM unclaimed_assets WHERE status = 'Claimed'")->fetchColumn();
-    $unclaimed = (int) $pdo->query("SELECT COUNT(*) FROM unclaimed_assets WHERE status = 'Unclaimed'")->fetchColumn();
+    // Claimed vs Unclaimed — monetary amounts
+    $claimed   = (float) $pdo->query("SELECT COALESCE(SUM(due_amount), 0) FROM unclaimed_assets WHERE status = 'Claimed'")->fetchColumn();
+    $unclaimed = (float) $pdo->query("SELECT COALESCE(SUM(due_amount), 0) FROM unclaimed_assets WHERE status = 'Unclaimed'")->fetchColumn();
+
+    // Claimed vs Unclaimed — record counts (for percentage calculation)
+    $claimed_count   = (int) $pdo->query("SELECT COUNT(*) FROM unclaimed_assets WHERE status = 'Claimed'")->fetchColumn();
+    $unclaimed_count = (int) $pdo->query("SELECT COUNT(*) FROM unclaimed_assets WHERE status = 'Unclaimed'")->fetchColumn();
 
     // Letters generated
     $letters = (int) $pdo->query("SELECT COUNT(*) FROM unclaimed_assets WHERE letter_generated = 'Yes'")->fetchColumn();
@@ -69,17 +73,19 @@ try {
     $trendData   = array_map('intval', array_column($activityTrend, 'cnt'));
 
     echo json_encode([
-        'success'       => true,
-        'total'         => $total,
-        'claimed'       => $claimed,
-        'unclaimed'     => $unclaimed,
-        'letters'       => $letters,
-        'users'         => $users,
-        'log_count'     => $logCount,
-        'today_activity'=> $todayActivity,
-        'uploads'       => $uploads,
-        'chart_uploads' => ['labels' => $uploadLabels, 'data' => $uploadData],
-        'chart_trend'   => ['labels' => $trendLabels,  'data' => $trendData],
+        'success'        => true,
+        'total'          => $total,
+        'claimed'        => $claimed,
+        'unclaimed'      => $unclaimed,
+        'claimed_count'  => $claimed_count,
+        'unclaimed_count'=> $unclaimed_count,
+        'letters'        => $letters,
+        'users'          => $users,
+        'log_count'      => $logCount,
+        'today_activity' => $todayActivity,
+        'uploads'        => $uploads,
+        'chart_uploads'  => ['labels' => $uploadLabels, 'data' => $uploadData],
+        'chart_trend'    => ['labels' => $trendLabels,  'data' => $trendData],
     ]);
 
 } catch (Exception $e) {

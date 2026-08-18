@@ -95,16 +95,51 @@ function admin_ensure_tables(PDO $pdo): void
     // upload_sessions
     $pdo->exec("
         CREATE TABLE IF NOT EXISTS `upload_sessions` (
-            `id`           INT AUTO_INCREMENT PRIMARY KEY,
-            `uploaded_by`  VARCHAR(100) NOT NULL DEFAULT 'system',
-            `file_name`    VARCHAR(500) NOT NULL,
-            `record_count` INT NOT NULL DEFAULT 0,
-            `status`       ENUM('success','partial','failed') NOT NULL DEFAULT 'success',
-            `notes`        TEXT NULL,
-            `uploaded_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `id`                  INT AUTO_INCREMENT PRIMARY KEY,
+            `uploaded_by`         VARCHAR(100) NOT NULL DEFAULT 'system',
+            `file_name`           VARCHAR(500) NOT NULL,
+            `record_count`        INT NOT NULL DEFAULT 0,
+            `status`              ENUM('success','partial','failed') NOT NULL DEFAULT 'success',
+            `protection_password` VARCHAR(100) NULL,
+            `notes`               TEXT NULL,
+            `uploaded_at`         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             INDEX `idx_uploaded_at` (`uploaded_at`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     ");
+
+    try {
+        $chkPass = $pdo->query("SHOW COLUMNS FROM `upload_sessions` LIKE 'protection_password'");
+        if ($chkPass && $chkPass->rowCount() === 0) {
+            $pdo->exec("ALTER TABLE `upload_sessions` ADD COLUMN `protection_password` VARCHAR(100) NULL AFTER `status`");
+        }
+    } catch (Exception $ex) {}
+
+    // sandbox_drafts table for collaborative multi-officer draft editing & auto-save
+    $pdo->exec("
+        CREATE TABLE IF NOT EXISTS `sandbox_drafts` (
+            `id`             INT AUTO_INCREMENT PRIMARY KEY,
+            `draft_name`     VARCHAR(255) NOT NULL,
+            `created_by`     VARCHAR(100) NOT NULL,
+            `last_edited_by` VARCHAR(100) NOT NULL,
+            `rows_data`      LONGTEXT NOT NULL,
+            `presence_data`  TEXT NULL,
+            `status`         ENUM('active','submitted') NOT NULL DEFAULT 'active',
+            `created_at`     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            `updated_at`     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    ");
+
+    try {
+        $chkPres = $pdo->query("SHOW COLUMNS FROM `sandbox_drafts` LIKE 'presence_data'");
+        if ($chkPres && $chkPres->rowCount() === 0) {
+            $pdo->exec("ALTER TABLE `sandbox_drafts` ADD COLUMN `presence_data` TEXT NULL AFTER `rows_data`");
+        }
+        $chkView = $pdo->query("SHOW COLUMNS FROM `sandbox_drafts` LIKE 'viewer_data'");
+        if ($chkView && $chkView->rowCount() === 0) {
+            $pdo->exec("ALTER TABLE `sandbox_drafts` ADD COLUMN `viewer_data` TEXT NULL AFTER `presence_data`");
+        }
+    } catch (Exception $ex) {}
+
 
     // admin_settings
     $pdo->exec("

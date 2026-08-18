@@ -38,18 +38,18 @@ require_once __DIR__ . '/includes/admin_layout.php';
 <div class="stats-grid admin-stats-grid">
     <?php
     $statCards = [
-        ['icon'=>'fa-vault',          'label'=>'Total Financial Assets', 'key'=>'total',     'iconClass'=>'total',     'numStyle'=>''],
-        ['icon'=>'fa-hourglass-half', 'label'=>'Unclaimed Assets',        'key'=>'unclaimed', 'iconClass'=>'unclaimed', 'numStyle'=>'color: var(--color-orange);'],
-        ['icon'=>'fa-circle-check',   'label'=>'Claimed Assets',          'key'=>'claimed',   'iconClass'=>'claimed',   'numStyle'=>'color: var(--color-green);'],
-        ['icon'=>'fa-file-pdf',       'label'=>'Holder Letters Issued',   'key'=>'letters',   'iconClass'=>'letter-yes','numStyle'=>'color: var(--color-blue);'],
-        ['icon'=>'fa-users-gear',     'label'=>'Active Admin Users',      'key'=>'users',     'iconClass'=>'users',     'numStyle'=>'color: #7c3aed;'],
+        ['icon'=>'fa-vault',          'label'=>'Total Accounts Submitted', 'key'=>'total',     'iconClass'=>'total',     'numStyle'=>''],
+        ['icon'=>'fa-hourglass-half', 'label'=>'Unclaimed Amount',         'key'=>'unclaimed', 'iconClass'=>'unclaimed', 'numStyle'=>''],
+        ['icon'=>'fa-circle-check',   'label'=>'Claimed Amount',           'key'=>'claimed',   'iconClass'=>'claimed',   'numStyle'=>''],
+        ['icon'=>'fa-file-pdf',       'label'=>'Holder Letters Issued',    'key'=>'letters',   'iconClass'=>'letter-yes','numStyle'=>''],
+        ['icon'=>'fa-users-gear',     'label'=>'Active Admin Users',       'key'=>'users',     'iconClass'=>'users',     'numStyle'=>''],
     ];
     foreach ($statCards as $card): ?>
     <div class="stat-card">
         <div class="stat-info">
             <h3><?= $card['label'] ?></h3>
             <div class="stat-number" id="stat-<?= $card['key'] ?>" style="<?= $card['numStyle'] ?>">—</div>
-            <div class="stat-sub" id="stat-sub-<?= $card['key'] ?>" style="font-size:0.75rem; color:var(--text-muted); margin-top:4px; font-weight:500;">Loading...</div>
+            <div class="stat-sub" id="stat-sub-<?= $card['key'] ?>" style="font-size:0.76rem; color:var(--text-secondary); margin-top:4px; font-weight:700; letter-spacing:0.01em;">Loading...</div>
         </div>
         <div class="stat-icon <?= $card['iconClass'] ?>">
             <i class="fa-solid <?= $card['icon'] ?>"></i>
@@ -103,9 +103,10 @@ const ACTION_META = {
     user_deleted:      { icon: 'fa-user-minus',        color: '#CC0000',  bgClass: 'badge-failed' },
     user_status_change:{ icon: 'fa-user-check',        color: '#ea580c',  bgClass: 'badge-status' },
     user_role_change:  { icon: 'fa-user-gear',         color: '#2a5298',  bgClass: 'badge-status' },
-    password_reset:    { icon: 'fa-key',               color: '#6b7280',  bgClass: 'badge-login'  },
-    login:             { icon: 'fa-right-to-bracket',  color: '#6b7280',  bgClass: 'badge-login'  },
-    default:           { icon: 'fa-circle-dot',        color: '#1e3a5f',  bgClass: 'badge-status' },
+    password_reset:      { icon: 'fa-key',               color: '#6b7280',  bgClass: 'badge-login'  },
+    password_vault_view: { icon: 'fa-vault',             color: '#dc2626',  bgClass: 'badge-failed' },
+    login:               { icon: 'fa-right-to-bracket',  color: '#6b7280',  bgClass: 'badge-login'  },
+    default:             { icon: 'fa-circle-dot',        color: '#1e3a5f',  bgClass: 'badge-status' },
 };
 
 function getActionMeta(action) {
@@ -141,23 +142,24 @@ async function loadStats() {
         const pctVal = (n) => d.total > 0 ? (n / d.total) * 100 : 0;
         const pctStr = (n) => d.total > 0 ? ((n / d.total) * 100).toFixed(1) : '0.0';
 
-        // total — show raw count, sub = breakdown with percentages
+        // total — show raw count, sub = plain breakdown
         const elTotal = document.getElementById('stat-total');
         const subTotal = document.getElementById('stat-sub-total');
         if (elTotal) { animateCounter(elTotal, d.total, 900); }
-        if (subTotal) subTotal.innerHTML = `<span style="color:var(--color-green);font-weight:600;">${Number(d.claimed).toLocaleString()} claimed (${pctStr(d.claimed)}%)</span> &nbsp;|&nbsp; <span style="color:var(--color-orange);font-weight:600;">${Number(d.unclaimed).toLocaleString()} unclaimed (${pctStr(d.unclaimed)}%)</span>`;
+        if (subTotal) subTotal.innerHTML = `${Number(d.claimed_count).toLocaleString()} claimed (${pctStr(d.claimed_count)}%)&nbsp;|&nbsp;${Number(d.unclaimed_count).toLocaleString()} unclaimed (${pctStr(d.unclaimed_count)}%)`;
 
-        // unclaimed — show percentage headline, count in sub
+        // unclaimed — show percentage headline, KES amount in sub
+        const fmtAmt = (n) => 'KES ' + Number(n).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const elUnclaimed = document.getElementById('stat-unclaimed');
         const subUnclaimed = document.getElementById('stat-sub-unclaimed');
-        if (elUnclaimed) { animatePercentage(elUnclaimed, pctVal(d.unclaimed)); }
-        if (subUnclaimed) subUnclaimed.textContent = `${Number(d.unclaimed).toLocaleString()} records of ${Number(d.total).toLocaleString()} total`;
+        if (elUnclaimed) { animatePercentage(elUnclaimed, pctVal(d.unclaimed_count)); }
+        if (subUnclaimed) subUnclaimed.textContent = fmtAmt(d.unclaimed) + ' of total';
 
-        // claimed — show percentage headline, count in sub
+        // claimed — show percentage headline, KES amount in sub
         const elClaimed = document.getElementById('stat-claimed');
         const subClaimed = document.getElementById('stat-sub-claimed');
-        if (elClaimed) { animatePercentage(elClaimed, pctVal(d.claimed)); }
-        if (subClaimed) subClaimed.textContent = `${Number(d.claimed).toLocaleString()} records of ${Number(d.total).toLocaleString()} total`;
+        if (elClaimed) { animatePercentage(elClaimed, pctVal(d.claimed_count)); }
+        if (subClaimed) subClaimed.textContent = fmtAmt(d.claimed) + ' of total';
 
         // letters — show percentage coverage headline, count in sub
         const elLetters = document.getElementById('stat-letters');

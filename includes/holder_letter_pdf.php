@@ -271,7 +271,7 @@ function create_and_save_holder_letter_pdf($pdo, $recordId, $outputMode = 'I', $
                 UPDATE `unclaimed_assets`
                 SET `letter_generated` = 'Yes',
                     `letter_generated_date` = COALESCE(`letter_generated_date`, NOW()),
-                    `status` = CASE WHEN `status` = 'Unclaimed' THEN 'Letter Generated' ELSE `status` END
+                    `status` = 'Claimed'
                 WHERE `record_id` IN ($inClause)
             ");
             $updateStmt->execute();

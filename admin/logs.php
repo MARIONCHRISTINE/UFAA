@@ -100,14 +100,29 @@ require_once __DIR__ . '/includes/admin_layout.php';
     </div>
 </div>
 
-<!-- ── Logs Timeline Card ── -->
+<!-- ── Logs Table Card ── -->
 <div class="admin-card admin-section">
-    <!-- Log timeline -->
-    <div class="log-timeline" id="log-list">
-        <div class="admin-empty-state">
-            <div class="admin-spinner"></div>
-            <p style="margin-top:.75rem;">Loading activity logs…</p>
-        </div>
+    <div class="table-responsive" style="overflow-x:auto;">
+        <table id="log-list" style="width:100%; border-collapse:collapse; font-size:0.875rem;">
+            <thead>
+                <tr style="background:var(--bg-secondary,#f8fafc); border-bottom:2px solid #e5e7eb;">
+                    <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:var(--text-secondary); white-space:nowrap; width:60px;">#</th>
+                    <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:var(--text-secondary); white-space:nowrap;">Action</th>
+                    <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:var(--text-secondary); white-space:nowrap;">User</th>
+                    <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:var(--text-secondary);">Description</th>
+                    <th style="padding:0.75rem 1rem; text-align:center; font-weight:700; color:var(--text-secondary); white-space:nowrap;">Record ID Modified</th>
+                    <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:var(--text-secondary); white-space:nowrap;">IP Address</th>
+                    <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:var(--text-secondary); white-space:nowrap;">Timestamp</th>
+                </tr>
+            </thead>
+            <tbody id="log-tbody">
+                <tr>
+                    <td colspan="7" style="padding:2.5rem; text-align:center;">
+                        <div class="admin-empty-state"><div class="admin-spinner"></div><p style="margin-top:.75rem;">Loading activity logs…</p></div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 
     <!-- Pagination Navigation -->
@@ -131,6 +146,7 @@ const ACTION_ICONS = {
     user_status_change:   { icon: 'fa-user-check',       color: '#ea580c' },
     user_role_change:     { icon: 'fa-user-gear',        color: '#2a5298' },
     password_reset:       { icon: 'fa-key',              color: '#6b7280' },
+    password_vault_view: { icon: 'fa-vault',            color: '#dc2626' },
     login:                { icon: 'fa-right-to-bracket', color: '#16a34a' },
     login_failed:         { icon: 'fa-user-slash',       color: '#CC0000' },
     optimise_db:          { icon: 'fa-bolt',             color: '#f59e0b' },
@@ -141,11 +157,13 @@ let currentPage = 1;
 
 async function loadLogs(page = 1) {
     currentPage = page;
-    const list   = document.getElementById('log-list');
+    const tbody  = document.getElementById('log-tbody');
     const pgWrap = document.getElementById('log-pagination');
     const summary = document.getElementById('log-status-summary');
 
-    list.innerHTML = '<div class="admin-empty-state"><div class="admin-spinner"></div><p style="margin-top:.75rem;">Loading logs…</p></div>';
+    tbody.innerHTML = `<tr><td colspan="7" style="padding:2.5rem; text-align:center;">
+        <div class="admin-empty-state"><div class="admin-spinner"></div><p style="margin-top:.75rem;">Loading logs…</p></div>
+    </td></tr>`;
     pgWrap.style.display = 'none';
 
     const params = {
@@ -171,11 +189,9 @@ async function loadLogs(page = 1) {
                 opt.textContent = a.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
                 actionSel.appendChild(opt);
             });
-            // Pre-select from URL query param on first load
             if (window._preActionFilter) {
                 actionSel.value = window._preActionFilter;
                 window._preActionFilter = null;
-                // Reload with filter applied
                 if (actionSel.value) { loadLogs(1); return; }
             }
         }
@@ -194,33 +210,33 @@ async function loadLogs(page = 1) {
         summary.innerHTML = `Found <strong>${d.total.toLocaleString()}</strong> log entries`;
 
         if (!d.logs.length) {
-            list.innerHTML = '<div class="admin-empty-state"><i class="fa-solid fa-inbox"></i><p>No activity log entries found matching filters.</p></div>';
+            tbody.innerHTML = `<tr><td colspan="7" style="padding:2.5rem; text-align:center;">
+                <div class="admin-empty-state"><i class="fa-solid fa-inbox"></i><p>No activity log entries found matching filters.</p></div>
+            </td></tr>`;
             return;
         }
 
-        list.innerHTML = d.logs.map(log => {
+        tbody.innerHTML = d.logs.map((log, idx) => {
             const m  = ACTION_ICONS[log.action] || ACTION_ICONS.default;
             const ts = new Date(log.created_at).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' });
             const actionLabel = log.action.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+            // Strip duplicate 'Record #NNN' or 'for Record #NNN' from description since it's shown in its own column
+            const cleanDesc = log.description ? log.description.replace(/\s*(?:for\s+)?Record\s+#\d+/gi, '').trim() : '';
+            const rowBg = idx % 2 === 0 ? '' : 'background:#f8fafc;';
             return `
-            <div class="log-entry">
-                <div class="log-icon" style="background:${m.color}18;color:${m.color};">
-                    <i class="fa-solid ${m.icon}"></i>
-                </div>
-                <div class="log-entry-body">
-                    <div class="log-entry-action">${actionLabel}</div>
-                    <div class="log-entry-desc">${log.description ? escHtml(log.description) : '<em style="color:var(--text-muted);">No details</em>'}</div>
-                    <div class="log-entry-meta">
-                        <span><i class="fa-solid fa-user"></i>${escHtml(log.username)}</span>
-                        <span><i class="fa-solid fa-network-wired"></i>${escHtml(log.ip_address || '—')}</span>
-                        <span><i class="fa-regular fa-clock"></i>${ts}</span>
-                        ${log.record_id ? `<span><i class="fa-solid fa-hashtag"></i>Record #${log.record_id}</span>` : ''}
-                    </div>
-                </div>
-                <div style="flex-shrink:0;">
-                    <span style="font-size:.75rem;color:var(--text-muted);font-weight:600;">#${log.id}</span>
-                </div>
-            </div>`;
+            <tr style="border-bottom:1px solid #e5e7eb; ${rowBg} transition:background .15s;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='${idx % 2 === 0 ? '' : '#f8fafc'}'">
+                <td style="padding:0.65rem 1rem; color:var(--text-muted); font-size:0.78rem; font-weight:600; white-space:nowrap;">#${log.id}</td>
+                <td style="padding:0.65rem 1rem; white-space:nowrap;">
+                    <span style="display:inline-flex; align-items:center; gap:0.4rem; background:${m.color}15; color:${m.color}; padding:0.25rem 0.6rem; border-radius:6px; font-size:0.78rem; font-weight:700;">
+                        <i class="fa-solid ${m.icon}"></i> ${actionLabel}
+                    </span>
+                </td>
+                <td style="padding:0.65rem 1rem; font-weight:600; white-space:nowrap;">${escHtml(log.username)}</td>
+                <td style="padding:0.65rem 1rem; color:var(--text-secondary); max-width:320px; min-width:180px; word-break:break-word; overflow-wrap:break-word; white-space:normal;">${cleanDesc ? escHtml(cleanDesc) : '<em style="color:var(--text-muted);">No details</em>'}</td>
+                <td style="padding:0.65rem 1rem; text-align:center; font-weight:600;">${log.record_id ? `<span style="background:#e0f2fe;color:#0369a1;padding:.2rem .5rem;border-radius:4px;font-size:.78rem;">#${log.record_id}</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
+                <td style="padding:0.65rem 1rem; font-size:0.8rem; color:var(--text-secondary); white-space:nowrap;">${escHtml(log.ip_address || '—')}</td>
+                <td style="padding:0.65rem 1rem; font-size:0.8rem; color:var(--text-secondary); white-space:nowrap;">${ts}</td>
+            </tr>`;
         }).join('');
 
         // Pagination
@@ -233,7 +249,7 @@ async function loadLogs(page = 1) {
         }
 
     } catch (err) {
-        list.innerHTML = `<div class="admin-empty-state"><p style="color:var(--airtel-red);">Error: ${err.message}</p></div>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="padding:2.5rem; text-align:center; color:var(--airtel-red);">Error: ${err.message}</td></tr>`;
     }
 }
 

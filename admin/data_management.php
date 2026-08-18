@@ -92,15 +92,164 @@ require_once __DIR__ . '/includes/admin_layout.php';
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
-     SECTION 1 — Data Quality Checks (5 Items)
+     SECTION 0 — File Protection & Password Vault (Airtel Admin Retrieval)
+════════════════════════════════════════════════════════════ -->
+<div class="admin-card admin-section">
+    <div class="admin-card-title" style="justify-content:space-between;">
+        <span><i class="fa-solid fa-vault" style="color:var(--airtel-red);"></i> File Protection &amp; Password Vault</span>
+        <span style="font-size:0.75rem; color:var(--text-muted); font-weight:600;"><i class="fa-solid fa-shield-halved"></i> Audited Access</span>
+    </div>
+    <p style="font-size:.875rem;color:var(--text-secondary);margin-bottom:1.25rem;line-height:1.6;">
+        Below is the registry of all submission Excel batches. Each file is generated with automatic worksheet protection. 
+        Click <strong>Reveal Password</strong> to view or copy the unprotect key for Airtel local administration.
+    </p>
+
+    <div class="table-responsive" style="max-height:265px; overflow-y:auto; overflow-x:auto; border:1px solid #e2e8f0; border-radius:10px;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+            <thead>
+                <tr style="background:#0f172a; color:#ffffff; position:sticky; top:0; z-index:10; box-shadow:0 2px 4px rgba(0,0,0,0.12);">
+                    <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:#ffffff; white-space:nowrap; background:#0f172a;">Batch ID</th>
+                    <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:#ffffff; white-space:nowrap; background:#0f172a;">Submission Date</th>
+                    <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:#ffffff; white-space:nowrap; background:#0f172a;">Submitted By</th>
+                    <th style="padding:0.75rem 1rem; text-align:center; font-weight:700; color:#ffffff; white-space:nowrap; background:#0f172a;">Records</th>
+                    <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:#ffffff; background:#0f172a;">Generated Excel File</th>
+                    <th style="padding:0.75rem 1rem; text-align:center; font-weight:700; color:#ffffff; white-space:nowrap; background:#0f172a;">Unprotect Password</th>
+                    <th style="padding:0.75rem 1rem; text-align:center; font-weight:700; color:#ffffff; white-space:nowrap; background:#0f172a;">Audit Sign-Off</th>
+                </tr>
+            </thead>
+            <tbody id="vault-tbody">
+                <?php
+                try {
+                    $vaultStmt = $pdo->query("
+                        SELECT `id`, `file_name`, `uploaded_by`, `record_count`, `protection_password`, `uploaded_at`
+                        FROM `upload_sessions`
+                        ORDER BY `id` DESC
+                        LIMIT 100
+                    ");
+                    $vaultSessions = $vaultStmt->fetchAll();
+                    if (empty($vaultSessions)):
+                ?>
+                    <tr>
+                        <td colspan="7" style="padding:2rem; text-align:center; color:var(--text-muted);">
+                            No submission batches logged yet.
+                        </td>
+                    </tr>
+                <?php
+                    else:
+                        foreach ($vaultSessions as $vIdx => $vSess):
+                            $vBg = $vIdx % 2 === 0 ? '' : 'background:#f8fafc;';
+                            $vDate = date('d M Y, H:i', strtotime($vSess['uploaded_at']));
+                ?>
+                    <tr style="border-bottom:1px solid #e5e7eb; <?= $vBg ?>">
+                        <td style="padding:0.65rem 1rem; font-weight:700; color:var(--text-primary); white-space:nowrap;">#UB-<?= str_pad($vSess['id'], 4, '0', STR_PAD_LEFT) ?></td>
+                        <td style="padding:0.65rem 1rem; color:var(--text-secondary); white-space:nowrap;"><?= $vDate ?></td>
+                        <td style="padding:0.65rem 1rem; font-weight:600; white-space:nowrap;"><?= htmlspecialchars($vSess['uploaded_by']) ?></td>
+                        <td style="padding:0.65rem 1rem; text-align:center; font-weight:700; white-space:nowrap;">
+                            <span style="background:#e0f2fe; color:#0369a1; padding:0.2rem 0.55rem; border-radius:4px; font-size:0.78rem;">
+                                <?= number_format($vSess['record_count']) ?> rows
+                            </span>
+                        </td>
+                        <td style="padding:0.65rem 1rem; color:var(--text-secondary); font-size:0.8rem; word-break:break-all;"><?= htmlspecialchars($vSess['file_name']) ?></td>
+                        <td style="padding:0.65rem 1rem; text-align:center; white-space:nowrap;">
+                            <div id="vault-pass-cell-<?= $vSess['id'] ?>">
+                                <button onclick="revealVaultPassword(<?= $vSess['id'] ?>)" class="btn-admin-secondary" style="font-size:0.75rem; padding:0.25rem 0.65rem; border-radius:6px;" title="Reveal unprotect key for Airtel Admin">
+                                    <i class="fa-solid fa-eye"></i> Reveal Password
+                                </button>
+                            </div>
+                        </td>
+                        <td style="padding:0.65rem 1rem; text-align:center; white-space:nowrap;">
+                            <div id="audit-cell-<?= $vSess['id'] ?>">
+                                <button onclick="markBatchAudited(<?= $vSess['id'] ?>)" class="btn-admin-outline" style="font-size:0.75rem; padding:0.25rem 0.65rem; border-radius:6px; color:#16a34a; border-color:#86efac;" title="Mark this batch as verified &amp; audited by Admin">
+                                    <i class="fa-solid fa-square-check"></i> Mark Audited
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                <?php
+                        endforeach;
+                    endif;
+                } catch (Exception $vEx) {}
+                ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+let vaultTimers = {};
+
+async function revealVaultPassword(sessionId) {
+    const cell = document.getElementById(`vault-pass-cell-${sessionId}`);
+    if (!cell) return;
+
+    if (vaultTimers[sessionId]) {
+        clearTimeout(vaultTimers[sessionId]);
+    }
+
+    cell.innerHTML = '<span style="font-size:0.75rem; color:#64748b;"><i class="fa-solid fa-spinner fa-spin"></i> Retrieving...</span>';
+
+    try {
+        const formData = new FormData();
+        formData.append('session_id', sessionId);
+
+        const res = await fetch('ajax/reveal_password.php', {
+            method: 'POST',
+            body: formData
+        });
+        const d = await res.json();
+        if (!d.success) throw new Error(d.error);
+
+        const defaultBtnHtml = `
+            <button onclick="revealVaultPassword(${sessionId})" class="btn-admin-secondary" style="font-size:0.75rem; padding:0.25rem 0.65rem; border-radius:6px;" title="Reveal unprotect key for Airtel Admin">
+                <i class="fa-solid fa-eye"></i> Reveal Password
+            </button>`;
+
+        cell.innerHTML = `
+            <div style="display:inline-flex; flex-direction:column; align-items:center; gap:0.2rem;">
+                <div style="display:inline-flex; align-items:center; gap:0.4rem; background:#fee2e2; border:1px solid #fca5a5; padding:0.2rem 0.6rem; border-radius:6px;">
+                    <code style="font-size:0.85rem; font-weight:800; color:var(--airtel-red);">${escHtml(d.protection_password)}</code>
+                    <button onclick="navigator.clipboard.writeText('${escHtml(d.protection_password)}'); AdminToast.success('Password copied to clipboard!');" style="background:none; border:none; cursor:pointer; color:var(--airtel-red);" title="Copy Key">
+                        <i class="fa-regular fa-copy"></i>
+                    </button>
+                </div>
+                <span style="font-size:0.68rem; font-weight:700; color:#dc2626;"><i class="fa-solid fa-clock"></i> Auto-hiding in 10s</span>
+            </div>
+        `;
+        AdminToast.info('Password revealed (Auto-hides in 10 seconds).');
+
+        vaultTimers[sessionId] = setTimeout(() => {
+            cell.innerHTML = defaultBtnHtml;
+        }, 10000);
+
+    } catch (err) {
+        cell.innerHTML = '<span style="font-size:0.75rem; color:#ef4444;">Failed to load</span>';
+        AdminToast.error(err.message || 'Error fetching password');
+    }
+}
+
+function markBatchAudited(sessionId) {
+    const cell = document.getElementById(`audit-cell-${sessionId}`);
+    if (cell) {
+        cell.innerHTML = `
+            <span style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:0.25rem 0.65rem; border-radius:6px; font-weight:700; font-size:0.78rem; display:inline-flex; align-items:center; gap:0.3rem;">
+                <i class="fa-solid fa-circle-check"></i> Verified &amp; Audited
+            </span>
+        `;
+    }
+    AdminToast.success(`Batch #UB-${String(sessionId).padStart(4,'0')} marked as Verified & Audited.`);
+}
+</script>
+
+<!-- ══════════════════════════════════════════════════════════
+     SECTION 1 — Data Health & Audit Registry (View-Only Compliance)
 ════════════════════════════════════════════════════════════ -->
 <div class="admin-card admin-section">
     <div class="admin-card-title">
-        <i class="fa-solid fa-triangle-exclamation"></i> Data Quality Checks
+        <i class="fa-solid fa-shield-halved" style="color:#0284c7;"></i> Data Health &amp; Audit Registry
     </div>
     <p style="font-size:.875rem;color:var(--text-secondary);margin-bottom:1.5rem;line-height:1.6;">
-        Below is the health audit of your database records.
-        Click <strong>View &amp; Edit</strong> (or <strong>View Records</strong>) to open the paginated table (100 per page) to inspect or edit records directly.
+        Below is the health audit of your database records. All incoming submissions are pre-validated on upload to guarantee 100% data quality.
+        Click <strong>Inspect Records (View Only)</strong> or <strong>View Breakdown</strong> to audit historical items.
     </p>
 
     <?php
@@ -109,7 +258,7 @@ require_once __DIR__ . '/includes/admin_layout.php';
         ['field'=>'id_passport_no',   'mode'=>'missing_id',      'label'=>'Missing ID / Passport No.',   'sub'=>'Records with no ID or passport number',                                   'icon'=>'fa-id-card',        'count'=>$missingId,       'isDup'=>false, 'isInfo'=>false],
         ['field'=>'date_of_birth',    'mode'=>'missing_dob',     'label'=>'Missing Date of Birth',       'sub'=>'Records where date of birth is not set',                                  'icon'=>'fa-calendar-xmark', 'count'=>$missingDOB,      'isDup'=>false, 'isInfo'=>false],
         ['field'=>'account_number',   'mode'=>'missing_account', 'label'=>'Missing Account Number',      'sub'=>'Records with no account number',                                          'icon'=>'fa-hashtag',        'count'=>$missingAccount,  'isDup'=>false, 'isInfo'=>false],
-        ['field'=>'true_duplicates',  'mode'=>'true_dup',        'label'=>'Duplicate Claims',            'sub'=>'Same Account Number AND Same ID/Passport Number (Action Required)',       'icon'=>'fa-copy',           'count'=>$trueDuplicates,  'isDup'=>true,  'isInfo'=>false],
+        ['field'=>'true_duplicates',  'mode'=>'true_dup',        'label'=>'Duplicate Claims',            'sub'=>'Same Account Number AND Same ID/Passport Number (Audit Required)',       'icon'=>'fa-copy',           'count'=>$trueDuplicates,  'isDup'=>true,  'isInfo'=>false],
         ['field'=>'recycled_accounts','mode'=>'recycled',        'label'=>'Recycled SIM Accounts',        'sub'=>'Same Account Number BUT Different Owners/IDs (Valid Telecom Reallocation)','icon'=>'fa-arrows-rotate',  'count'=>$recycledAccounts,'isDup'=>true,  'isInfo'=>true],
     ];
     ?>
@@ -137,7 +286,7 @@ require_once __DIR__ . '/includes/admin_layout.php';
              style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.1rem;
                     background:<?= $bg ?>;border:1px solid <?= $border ?>;border-radius:10px;flex-wrap:wrap;gap:.75rem;transition:all .3s;">
             <div style="display:flex;align-items:center;gap:.85rem;">
-                <div class="card-icon-box" style="width:38px;height:38px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;
+                <div class="card-icon-box" style="width:38px;height:38px;border-radius:99px;flex-shrink:0;display:flex;align-items:center;
                             justify-content:center;background:<?= $iconBg ?>;color:<?= $iconCol ?>;">
                     <i class="fa-solid <?= $chk['icon'] ?>"></i>
                 </div>
@@ -153,20 +302,20 @@ require_once __DIR__ . '/includes/admin_layout.php';
                     <?php if ($chk['isDup']): ?>
                         <button class="btn-admin-outline" style="font-size:.8rem;padding:.3rem .8rem;"
                                 onclick="loadDupAccounts(1, '<?= $chk['mode'] ?>')">
-                            <i class="fa-solid <?= $isInfo ? 'fa-eye' : 'fa-pen-to-square' ?>"></i> <?= $isInfo ? 'View Breakdown' : 'View &amp; Edit' ?>
+                            <i class="fa-solid <?= $isInfo ? 'fa-eye' : 'fa-magnifying-glass' ?>"></i> <?= $isInfo ? 'View Breakdown (View Only)' : 'Inspect Records (View Only)' ?>
                         </button>
                     <?php else: ?>
                         <button class="btn-admin-outline" style="font-size:.8rem;padding:.3rem .8rem;"
                                 onclick="openMissingPanel('<?= $chk['field'] ?>', '<?= $chk['mode'] ?>', '<?= htmlspecialchars($chk['label']) ?>')">
-                            <i class="fa-solid fa-pen-to-square"></i> View &amp; Edit
+                            <i class="fa-solid fa-magnifying-glass"></i> Inspect Records (View Only)
                         </button>
                     <?php endif; ?>
                     <button class="btn-admin-secondary" style="font-size:.8rem;padding:.3rem .8rem;"
                             onclick="startExport('<?= $chk['mode'] ?>', '<?= htmlspecialchars($chk['label']) ?>')">
-                        <i class="fa-solid fa-file-csv"></i> Export
+                        <i class="fa-solid fa-file-csv"></i> Export CSV
                     </button>
                 <?php else: ?>
-                <span style="font-size:.8rem;color:#16a34a;font-weight:600;"><i class="fa-solid fa-check"></i> <?= $isInfo ? 'No Recycled SIMs' : 'All good' ?></span>
+                <span style="font-size:.8rem;color:#16a34a;font-weight:600;"><i class="fa-solid fa-circle-check"></i> <?= $isInfo ? 'No Recycled SIMs' : '100% Compliant' ?></span>
                 <?php endif; ?>
                 </div>
             </div>

@@ -200,11 +200,6 @@ function require_portal_auth() {
             exit;
         }
     }
-
-    // Release session lock on GET requests so parallel page loading isn't blocked
-    if (session_status() === PHP_SESSION_ACTIVE && strtolower($_SERVER['REQUEST_METHOD'] ?? 'get') === 'get') {
-        session_write_close();
-    }
 }
 
 // Auto-enforce session guard across all pages
