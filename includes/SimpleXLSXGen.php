@@ -131,7 +131,7 @@ class SimpleXLSXGen {
         $protTag = '';
         if (!empty($this->protectionPassword)) {
             $pwHash = $this->calcPasswordHash($this->protectionPassword);
-            $protTag = '<sheetProtection password="' . $pwHash . '" sheet="1" objects="1" scenarios="1" selectLockedCells="0" selectUnlockedCells="0" formatCells="1" formatColumns="1" formatRows="1" insertColumns="1" insertRows="1" insertHyperlinks="1" deleteColumns="1" deleteRows="1" sort="1" autoFilter="1" pivotTables="1"/>';
+            $protTag = '<sheetProtection password="' . $pwHash . '" sheet="1" objects="1" scenarios="1" selectLockedCells="1" selectUnlockedCells="1" formatCells="1" formatColumns="0" formatRows="0" insertColumns="1" insertRows="1" insertHyperlinks="1" deleteColumns="1" deleteRows="1" sort="1" autoFilter="1" pivotTables="1"/>';
         }
 
         // Worksheet sheet1.xml
@@ -171,8 +171,10 @@ class SimpleXLSXGen {
 </styleSheet>');
 
         // Workbook XML
+        $wbProtTag = !empty($this->protectionPassword) ? '<workbookProtection lockStructure="1" lockWindows="0"/>' : '';
         $zip->addFromString('xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+    ' . $wbProtTag . '
     <sheets>
         <sheet name="UFAA Submission" sheetId="1" r:id="rId1"/>
     </sheets>

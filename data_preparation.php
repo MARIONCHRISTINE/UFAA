@@ -78,6 +78,9 @@ require_once 'includes/layout.php';
     <input type="file" id="sanitizer-file-input" accept=".xlsx,.xls,.csv" onchange="loadExcelAndRedirect(event)"
         style="display:none;">
 
+    <!-- Flagged Duplicate Alert Box Container -->
+    <div id="flagged-notice-alert-container"></div>
+
     <!-- Draft File List Section -->
     <div style="margin-bottom:.75rem; display:flex; justify-content:space-between; align-items:center;">
         <div
@@ -141,25 +144,61 @@ require_once 'includes/layout.php';
 
     async function loadDraftList() {
         const wrap = document.getElementById('draft-list-wrap');
+        const alertWrap = document.getElementById('flagged-notice-alert-container');
         if (!wrap) return;
         try {
             const res = await fetch('ajax/sandbox_draft_api.php?action=list');
             const data = await res.json();
 
             if (data.status === 'success' && data.drafts && data.drafts.length > 0) {
+                // Check if any draft is flagged
+                const flaggedDrafts = data.drafts.filter(d => d.status === 'flagged');
+                if (alertWrap) {
+                    if (flaggedDrafts.length > 0) {
+                        const f = flaggedDrafts[0];
+                        alertWrap.innerHTML = `
+                        <div style="background:#fffbeb; border:1.5px solid #fcd34d; border-radius:14px; padding:1.1rem 1.5rem; margin-bottom:1.5rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; box-shadow:0 4px 14px rgba(217,119,6,0.12);">
+                            <div style="display:flex; align-items:center; gap:1rem;">
+                                <div style="width:46px; height:46px; background:#fef3c7; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#d97706; font-size:1.35rem; flex-shrink:0;">
+                                    <i class="fa-solid fa-triangle-exclamation"></i>
+                                </div>
+                                <div>
+                                    <div style="font-weight:800; font-size:1rem; color:#92400e;">${flaggedDrafts.length} File Flagged for Duplicate Review</div>
+                                    <div style="font-size:.85rem; color:#b45309; margin-top:2px;">
+                                        ${escHtml(f.flagged_reason || 'An administrator flagged potential duplicate claims in this report. Click to open the Web-Excel Editor to resolve.')}
+                                    </div>
+                                </div>
+                            </div>
+                            <a href="data_sanitizer_editor.php?draft_id=${f.id}" class="btn-filter" style="padding:.55rem 1.2rem; font-size:.84rem; border-radius:9px; background:#d97706; color:#fff; text-decoration:none; display:inline-flex; align-items:center; gap:.45rem; font-weight:700; box-shadow:0 4px 12px rgba(217,119,6,0.3);">
+                                <i class="fa-solid fa-pen-to-square"></i> Open Editor to Resolve
+                            </a>
+                        </div>`;
+                    } else {
+                        alertWrap.innerHTML = '';
+                    }
+                }
+
                 wrap.innerHTML = data.drafts.map(d => {
                     const rows = Math.max(0, Math.round(parseFloat(d.approx_rows) || 0));
                     const viewers = parseInt(d.viewer_count) || 0;
                     const editors = parseInt(d.editor_count) || 0;
                     const since = formatRelTime(d.updated_at);
+                    const isFlagged = d.status === 'flagged';
+                    const iconBg = isFlagged ? '#fef3c7' : '#fef2f2';
+                    const iconCol = isFlagged ? '#d97706' : 'var(--airtel-red)';
+                    const iconBorder = isFlagged ? '#fcd34d' : '#fca5a5';
+
                     return `
-                <div class="draft-row">
+                <div class="draft-row" style="${isFlagged ? 'border-color:#fcd34d; background:#fffbeb;' : ''}">
                     <div style="display:flex; align-items:center; gap:.85rem; flex:1; min-width:0;">
-                        <div style="width:40px; height:40px; border-radius:10px; background:#fef2f2; display:flex; align-items:center; justify-content:center; color:var(--airtel-red); font-size:1.25rem; flex-shrink:0; border:1px solid #fca5a5;">
-                            <i class="fa-regular fa-file-excel"></i>
+                        <div style="width:40px; height:40px; border-radius:10px; background:${iconBg}; display:flex; align-items:center; justify-content:center; color:${iconCol}; font-size:1.25rem; flex-shrink:0; border:1px solid ${iconBorder};">
+                            <i class="fa-regular ${isFlagged ? 'fa-flag' : 'fa-file-excel'}"></i>
                         </div>
                         <div style="min-width:0;">
-                            <div style="font-weight:800; color:var(--text-primary); font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escHtml(d.draft_name)}</div>
+                            <div style="font-weight:800; color:var(--text-primary); font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:.5rem;">
+                                ${escHtml(d.draft_name)}
+                                ${isFlagged ? `<span style="color:#b45309; background:#fef3c7; border:1px solid #fcd34d; padding:1px 7px; border-radius:6px; font-weight:700; font-size:.72rem;"><i class="fa-solid fa-flag"></i> Flagged Duplicate — Action Required</span>` : ''}
+                            </div>
                             <div style="font-size:.75rem; color:#64748b; margin-top:2px; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;">
                                 <span>${rows} row${rows !== 1 ? 's' : ''} &nbsp;·&nbsp; Last edit by: <strong>${escHtml(d.last_edited_by)}</strong> &nbsp;·&nbsp; ${since}</span>
                                 ${editors > 0 ? `<span style="color:#15803d; background:#dcfce7; padding:1px 7px; border-radius:6px; font-weight:700;"><i class="fa-solid fa-pen-to-square"></i> ${editors} editing live</span>` : ''}
@@ -168,8 +207,8 @@ require_once 'includes/layout.php';
                         </div>
                     </div>
                     <div style="display:flex; align-items:center; gap:.5rem; flex-shrink:0;">
-                        <a href="data_sanitizer_editor.php?draft_id=${d.id}" class="btn-filter" style="padding:.4rem .95rem; font-size:.82rem; border-radius:8px; text-decoration:none; display:inline-flex; align-items:center; gap:.4rem;">
-                            <i class="fa-solid fa-arrow-right-to-bracket"></i> Open Editor
+                        <a href="data_sanitizer_editor.php?draft_id=${d.id}" class="btn-filter" style="padding:.4rem .95rem; font-size:.82rem; border-radius:8px; text-decoration:none; display:inline-flex; align-items:center; gap:.4rem; ${isFlagged ? 'background:#d97706; color:#fff;' : ''}">
+                            <i class="fa-solid ${isFlagged ? 'fa-pen-to-square' : 'fa-arrow-right-to-bracket'}"></i> ${isFlagged ? 'Resolve in Editor' : 'Open Editor'}
                         </a>
                         <button onclick="deleteDraft(${d.id}, '${escAttr(d.draft_name)}')" class="btn-reset" style="padding:.4rem .75rem; font-size:.82rem; border-radius:8px; color:#dc2626;" title="Delete draft">
                             <i class="fa-solid fa-trash-can"></i>
@@ -178,6 +217,7 @@ require_once 'includes/layout.php';
                 </div>`;
                 }).join('');
             } else {
+                if (alertWrap) alertWrap.innerHTML = '';
                 wrap.innerHTML = `
                 <div style="text-align:center; padding:2.5rem 1rem; color:#94a3b8; font-size:.875rem; background:#fff; border:1px dashed #cbd5e1; border-radius:12px;">
                     <i class="fa-regular fa-folder-open" style="font-size:2rem; display:block; margin-bottom:.65rem; color:#cbd5e1;"></i>
@@ -202,6 +242,19 @@ require_once 'includes/layout.php';
     function loadExcelAndRedirect(event) {
         const file = event.target.files[0];
         if (!file) return;
+
+        const dz = document.getElementById('sanitizer-dropzone');
+        if (dz) {
+            dz.style.pointerEvents = 'none';
+            dz.innerHTML = `
+                <div style="display:flex; flex-direction:column; align-items:center;">
+                    <div style="width:68px; height:68px; background:#fef2f2; border:2px solid var(--airtel-red); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--airtel-red); font-size:1.8rem; margin-bottom:1rem;">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                    </div>
+                    <p style="font-size:1.05rem; font-weight:800; color:var(--text-primary); margin-bottom:.2rem;">Processing ${escHtml(file.name)}…</p>
+                    <p style="font-size:.875rem; color:#64748b;">Creating working file &amp; launching Web-Excel Editor…</p>
+                </div>`;
+        }
 
         const reader = new FileReader();
         reader.onload = async e => {

@@ -47,6 +47,9 @@ try {
     if (!in_array('viewer_data', $existingCols)) {
         try { $pdo->exec("ALTER TABLE `sandbox_drafts` ADD COLUMN `viewer_data` TEXT NULL AFTER `presence_data`"); } catch (Exception $_e) {}
     }
+    if (!in_array('flagged_reason', $existingCols)) {
+        try { $pdo->exec("ALTER TABLE `sandbox_drafts` ADD COLUMN `flagged_reason` TEXT NULL AFTER `status`"); } catch (Exception $_e) {}
+    }
 } catch (Exception $_ex) { /* silent */ }
 
 $currentUser = $_SESSION['admin_user']['username'] ?? $_SESSION['username'] ?? 'Officer';
@@ -85,12 +88,12 @@ try {
     /* LIST ─────────────────────────────────────────────── */
     if ($action === 'list') {
         $stmt = $pdo->query("
-            SELECT `id`, `draft_name`, `created_by`, `last_edited_by`, `updated_at`,
+            SELECT `id`, `draft_name`, `created_by`, `last_edited_by`, `updated_at`, `status`, `flagged_reason`,
                    COALESCE(`viewer_data`, '[]') AS viewer_data,
                    COALESCE(`presence_data`, '[]') AS presence_data,
                    `rows_data`
             FROM `sandbox_drafts`
-            WHERE `status` = 'active'
+            WHERE `status` IN ('active', 'flagged')
             ORDER BY `updated_at` DESC
             LIMIT 30
         ");
@@ -344,7 +347,7 @@ try {
         $stmt = $pdo->prepare("SELECT * FROM `sandbox_drafts` WHERE `id` = ?");
         $stmt->execute([$draftId]);
         $draft = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$draft || (isset($draft['status']) && $draft['status'] !== 'active')) {
+        if (!$draft || (isset($draft['status']) && !in_array($draft['status'], ['active', 'flagged']))) {
             if (ob_get_length()) ob_clean();
             header('Content-Type: application/json');
             echo json_encode([
@@ -365,11 +368,15 @@ try {
 
         if (ob_get_length()) ob_clean();
         header('Content-Type: application/json');
+        $isOwner = ($draft['created_by'] === $currentUser || strtolower($_SESSION['admin_user']['role'] ?? $_SESSION['role'] ?? '') === 'admin');
         echo json_encode([
             'status'         => 'success',
             'draft_id'       => (int)$draft['id'],
             'draft_name'     => $draft['draft_name'],
             'created_by'     => $draft['created_by'],
+            'is_owner'       => $isOwner,
+            'draft_status'   => $draft['status'],
+            'flagged_reason' => $draft['flagged_reason'] ?? '',
             'last_edited_by' => $draft['last_edited_by'],
             'updated_at'     => date('d M Y, H:i', strtotime($draft['updated_at'])),
             'updated_ts'     => strtotime($draft['updated_at']),

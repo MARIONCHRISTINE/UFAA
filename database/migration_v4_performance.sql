@@ -65,3 +65,11 @@ SET @preparedStatement = (SELECT IF(
 PREPARE add_idx_letter FROM @preparedStatement;
 EXECUTE add_idx_letter;
 DEALLOCATE PREPARE add_idx_letter;
+
+
+
+-- Adds performance index on account_number, status, owner_name, and id_passport_no
+ALTER TABLE `unclaimed_assets` ADD INDEX `idx_account_no` (`account_number`);
+ALTER TABLE `unclaimed_assets` ADD INDEX `idx_status`     (`status`);
+ALTER TABLE `unclaimed_assets` ADD INDEX `idx_owner_name` (`owner_name`);
+ALTER TABLE `unclaimed_assets` ADD INDEX `idx_id_number`  (`id_passport_no`);

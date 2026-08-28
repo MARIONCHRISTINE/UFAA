@@ -78,6 +78,9 @@ require_once 'includes/layout.php';
 ══════════════════════════════════════════════════════════ -->
 <div id="grid-workspace">
 
+    <!-- Flagged Admin Duplicate Review Notice -->
+    <div id="flagged-admin-banner-wrap"></div>
+
     <!-- Workspace Top Bar: File Name + Viewers + Back Button -->
     <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:.85rem 1.25rem; margin-bottom:1.1rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.75rem;">
         <div style="display:flex; align-items:center; gap:.75rem;">
@@ -264,28 +267,31 @@ require_once 'includes/layout.php';
         <div style="background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:14px; padding:1.1rem 1.2rem; margin-bottom:1.5rem; text-align:left;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.55rem;">
                 <span style="font-size:.72rem; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:.06em; display:flex; align-items:center; gap:.4rem;">
-                    <i class="fa-solid fa-lock" style="color:var(--airtel-red);"></i> Excel Unprotect Password
+                    <i class="fa-solid fa-lock" style="color:var(--airtel-red);"></i> Sheet Protection Status
                 </span>
-                <span style="font-size:.68rem; font-weight:700; color:#0369a1; background:#e0f2fe; padding:2px 8px; border-radius:12px; border:1px solid #bae6fd; display:inline-flex; align-items:center; gap:.3rem;">
-                    <i class="fa-solid fa-vault"></i> Saved to Vault
+                <span style="font-size:.68rem; font-weight:700; color:#15803d; background:#dcfce7; padding:2px 8px; border-radius:12px; border:1px solid #bbf7d0; display:inline-flex; align-items:center; gap:.3rem;">
+                    <i class="fa-solid fa-shield-halved"></i> Protected &amp; Locked
                 </span>
             </div>
             
-            <div style="background:#ffffff; border:1.5px solid #cbd5e1; border-radius:9px; padding:.55rem .85rem; display:flex; align-items:center; justify-content:space-between; gap:.75rem; box-shadow:inset 0 1px 2px rgba(0,0,0,0.03);">
-                <code id="modal-password-text" style="font-size:1.15rem; font-weight:800; color:var(--airtel-red); font-family:Consolas, Monaco, monospace; letter-spacing:.08em;"></code>
-                <button onclick="copyModalPassword()" class="btn-reset" style="padding:.38rem .85rem; font-size:.8rem; font-weight:700; border-radius:7px; color:#1e293b; background:#f1f5f9; border:1px solid #cbd5e1; cursor:pointer; display:inline-flex; align-items:center; gap:.4rem; transition:all 0.15s ease;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
-                    <i class="fa-regular fa-copy"></i> Copy
-                </button>
+            <div style="background:#ffffff; border:1.5px solid #cbd5e1; border-radius:9px; padding:.65rem .85rem; display:flex; align-items:center; justify-content:space-between; gap:.75rem; box-shadow:inset 0 1px 2px rgba(0,0,0,0.03);">
+                <span style="font-size:.9rem; font-weight:700; color:#334155; display:flex; align-items:center; gap:.5rem;">
+                    <i class="fa-solid fa-vault" style="color:var(--airtel-red);"></i> Admin Unlock Password
+                </span>
+                <span style="font-size:.82rem; font-weight:800; color:#64748b; background:#f1f5f9; padding:4px 10px; border-radius:6px; border:1px solid #e2e8f0; letter-spacing:.12em;">
+                    ••••••••••••
+                </span>
             </div>
             
-            <div style="font-size:.73rem; color:#64748b; margin-top:.5rem; display:flex; align-items:center; gap:.35rem;">
-                <i class="fa-solid fa-circle-info" style="color:#0284c7;"></i> Use this password to unprotect sheet cells in Microsoft Excel.
+            <div style="font-size:.73rem; color:#64748b; margin-top:.6rem; display:flex; align-items:flex-start; gap:.4rem; line-height:1.45;">
+                <i class="fa-solid fa-circle-info" style="color:#0284c7; margin-top:2px;"></i>
+                <span>The generated Excel file is protected against cell modifications. The unlock key is stored in the <strong>Admin Vault</strong>. Contact your Compliance Administrator if unlocking is required.</span>
             </div>
         </div>
 
         <!-- Actions Row -->
         <div style="display:flex; gap:.75rem; justify-content:center; align-items:center;">
-            <a id="btn-modal-download" href="#" class="btn-filter" style="padding:.65rem 1.35rem; text-decoration:none; font-size:.875rem; font-weight:700; border-radius:10px; background:var(--airtel-red); color:#fff; display:inline-flex; align-items:center; gap:.5rem; box-shadow:0 4px 14px rgba(220,38,38,0.35); transition:all 0.15s ease;">
+            <a id="btn-modal-download" href="#" onclick="triggerModalDownloadAndRedirect(); return false;" class="btn-filter" style="padding:.65rem 1.35rem; text-decoration:none; font-size:.875rem; font-weight:700; border-radius:10px; background:var(--airtel-red); color:#fff; display:inline-flex; align-items:center; gap:.5rem; box-shadow:0 4px 14px rgba(220,38,38,0.35); transition:all 0.15s ease;">
                 <i class="fa-solid fa-file-arrow-down"></i> Download Locked Copy
             </a>
             <button onclick="closeSuccessModal()" class="btn-reset" style="padding:.65rem 1.2rem; font-size:.875rem; font-weight:700; border-radius:10px; color:#475569; background:#f1f5f9; border:1px solid #cbd5e1; cursor:pointer; transition:all 0.15s ease;" onmouseover="this.style.background='#e2e8f0'" onmouseout="this.style.background='#f1f5f9'">
@@ -301,6 +307,8 @@ let gridRows               = [];
 let isValidating           = false;
 let currentDraftId         = <?= $draftId ?>;
 let currentDraftName       = '';
+let isDraftOwner           = true;
+let draftOwnerName         = '';
 let lastSyncTs             = 0;
 let pollTimer              = null;
 let heartbeatTimer         = null;
@@ -328,6 +336,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+/* ─── Owner Permissions ────────────────────────────────── */
+function applyOwnerPermissions() {
+    const btn = document.getElementById('btn-submit-locked');
+    if (!btn) return;
+    if (!isDraftOwner) {
+        btn.disabled = true;
+        btn.style.opacity = '0.65';
+        btn.style.cursor = 'not-allowed';
+        btn.innerHTML = `<i class="fa-solid fa-lock"></i> Only Owner (${escHtml(draftOwnerName)}) Can Submit`;
+        btn.title = `Only the file owner (${draftOwnerName}) is authorized to submit this file to UFAA.`;
+    } else {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Lock File';
+        btn.title = '';
+    }
+}
+
 /* ─── Open existing draft ──────────────────────────────── */
 async function openDraft(draftId) {
     try {
@@ -338,6 +365,8 @@ async function openDraft(draftId) {
         gridRows         = cleanRawRows(data.rows || []);
         currentDraftId   = data.draft_id;
         currentDraftName = data.draft_name;
+        isDraftOwner     = (data.is_owner !== undefined) ? data.is_owner : true;
+        draftOwnerName   = data.created_by || '';
         lastSyncTs       = data.updated_ts || 0;
         activePresence   = data.presence   || [];
         activeViewers    = data.viewers    || [];
@@ -347,6 +376,31 @@ async function openDraft(draftId) {
         currentCardFilter= 'all';
 
         document.getElementById('workspace-filename').textContent = currentDraftName || 'Draft';
+
+        const bannerWrap = document.getElementById('flagged-admin-banner-wrap');
+        if (bannerWrap) {
+            if (data.draft_status === 'flagged') {
+                bannerWrap.innerHTML = `
+                <div style="background:#fffbeb; border:1.5px solid #fcd34d; border-radius:12px; padding:.95rem 1.25rem; margin-bottom:1.1rem; display:flex; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap; box-shadow:0 4px 14px rgba(217,119,6,0.12);">
+                    <div style="display:flex; align-items:center; gap:.85rem;">
+                        <div style="width:40px; height:40px; background:#fef3c7; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#d97706; font-size:1.2rem; flex-shrink:0;">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight:800; font-size:.95rem; color:#92400e;">⚠️ Admin Flagged Duplicate Review Notice</div>
+                            <div style="font-size:.85rem; color:#b45309; margin-top:2px;">${escHtml(data.flagged_reason || 'An administrator flagged potential duplicate claims in this report. Edit cells directly in the grid below to resolve.')}</div>
+                        </div>
+                    </div>
+                    <div style="font-size:.78rem; font-weight:700; color:#b45309; background:#fef3c7; padding:.35rem .85rem; border-radius:20px; border:1px solid #fcd34d;">
+                        <i class="fa-solid fa-pen-to-square"></i> Direct Web-Grid Edit Active
+                    </div>
+                </div>`;
+            } else {
+                bannerWrap.innerHTML = '';
+            }
+        }
+
+        applyOwnerPermissions();
         renderGridTable(gridRows);
         validateGrid();
         startHeartbeat();
@@ -824,7 +878,15 @@ function startLiveSync() {
     }, 1500);
 }
 
+let isClosedModalActive = false;
+
 function showDraftClosedModal(submittedBy) {
+    if (isClosedModalActive) return;
+    isClosedModalActive = true;
+
+    clearInterval(pollTimer);
+    clearInterval(heartbeatTimer);
+
     // If the success modal for the uploader is open, do not disrupt it
     const successModal = document.getElementById('commit-success-modal');
     if (successModal && successModal.style.display === 'flex') return;
@@ -841,10 +903,15 @@ function showDraftClosedModal(submittedBy) {
                 </div>
                 <h3 style="font-size:1.3rem; font-weight:800; color:#0f172a; margin:0 0 .45rem 0;">File Submitted &amp; Locked</h3>
                 <p style="font-size:.9rem; color:#475569; margin:0 0 1.25rem 0; line-height:1.5;">
-                    This working file has just been submitted and locked by <strong>${escHtml(submittedBy)}</strong>. This workspace is now closed for active editors.
+                    This working file has just been submitted and locked by owner <strong>${escHtml(submittedBy)}</strong>. This workspace is now closed for active editors.
                 </p>
-                <div style="font-size:.8rem; font-weight:700; color:#0284c7; background:#e0f2fe; padding:.6rem 1.1rem; border-radius:10px; display:inline-flex; align-items:center; gap:.45rem; border:1px solid #bae6fd;">
-                    <i class="fa-solid fa-spinner fa-spin"></i> Redirecting to Working Files list...
+                <div style="display:flex; flex-direction:column; gap:.85rem; align-items:center;">
+                    <button onclick="window.location.replace('data_preparation.php')" class="btn-filter" style="padding:.65rem 1.35rem; font-size:.875rem; font-weight:700; border-radius:10px; background:var(--airtel-red); color:#fff; cursor:pointer; display:inline-flex; align-items:center; gap:.5rem; box-shadow:0 4px 14px rgba(220,38,38,0.35);">
+                        <i class="fa-solid fa-arrow-left"></i> Return to Working Files Now
+                    </button>
+                    <div style="font-size:.82rem; font-weight:700; color:#64748b; background:#f1f5f9; padding:.4rem .9rem; border-radius:20px; border:1px solid #cbd5e1; display:inline-flex; align-items:center; gap:.4rem;">
+                        <i class="fa-solid fa-clock" style="color:var(--airtel-red);"></i> Auto-redirecting in <span id="closed-countdown-sec" style="color:var(--airtel-red); font-weight:800; font-size:.95rem;">5</span>s
+                    </div>
                 </div>
             </div>
         `;
@@ -853,9 +920,22 @@ function showDraftClosedModal(submittedBy) {
         closedModal.style.display = 'flex';
     }
 
-    setTimeout(() => {
-        window.location.href = 'data_preparation.php';
-    }, 2800);
+    let remaining = 5;
+    const secSpan = document.getElementById('closed-countdown-sec');
+    if (secSpan) secSpan.textContent = remaining;
+
+    const timer = setInterval(() => {
+        remaining--;
+        if (secSpan) secSpan.textContent = Math.max(0, remaining);
+        if (remaining <= 0) {
+            clearInterval(timer);
+            const badgeWrap = secSpan ? secSpan.parentElement : null;
+            if (badgeWrap) {
+                badgeWrap.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:var(--airtel-red);"></i> Redirecting now…';
+            }
+            window.location.replace('data_preparation.php');
+        }
+    }, 1000);
 }
 
 /* ─── Validation ───────────────────────────────────────── */
@@ -1140,27 +1220,60 @@ function exportDraftExcel() {
 
 /* ─── Commit ───────────────────────────────────────────── */
 async function commitSanitizedUpload() {
+    if (currentDraftId && !isDraftOwner) {
+        alert(`Only the file owner (${draftOwnerName}) is authorized to submit this file to UFAA.`);
+        return;
+    }
+
     const btn = document.getElementById('btn-submit-locked');
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
     try {
         const res  = await fetch('ajax/commit_pre_submission.php', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ rows: gridRows })
+            body: JSON.stringify({ rows: gridRows, draft_id: currentDraftId })
         });
         const data = await res.json();
         if (data.status !== 'success') throw new Error(data.message);
-        if (currentDraftId) await fetch('ajax/sandbox_draft_api.php?action=delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ draft_id: currentDraftId }) });
+
         document.getElementById('success-modal-msg').textContent    = data.message;
-        document.getElementById('modal-password-text').textContent  = data.protection_password;
         document.getElementById('btn-modal-download').href          = data.file_url;
         document.getElementById('btn-modal-download').download      = data.file_name;
         document.getElementById('commit-success-modal').style.display = 'flex';
     } catch (err) { alert('Error: ' + err.message); }
-    finally { btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Lock File'; }
+    finally {
+        applyOwnerPermissions();
+    }
 }
-function copyModalPassword() { const t=document.getElementById('modal-password-text').textContent; navigator.clipboard.writeText(t); alert('Copied: '+t); }
-function closeSuccessModal() { document.getElementById('commit-success-modal').style.display='none'; window.location.href='data_preparation.php'; }
+
+function triggerModalDownloadAndRedirect() {
+    const btn = document.getElementById('btn-modal-download');
+    if (btn) {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Downloading…';
+        btn.style.opacity = '0.85';
+        btn.style.pointerEvents = 'none';
+    }
+
+    if (btn && btn.href) {
+        const url = btn.href;
+        const fn  = btn.download || 'UFAA_Submission.xlsx';
+        const a   = document.createElement('a');
+        a.href    = url;
+        a.download= fn;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    setTimeout(() => {
+        window.location.href = 'data_preparation.php';
+    }, 1500);
+}
+
+function closeSuccessModal() {
+    document.getElementById('commit-success-modal').style.display='none';
+    window.location.href='data_preparation.php';
+}
 
 /* ─── Utilities ────────────────────────────────────────── */
 function txt(v)          { return String(v ?? '').trim(); }

@@ -114,7 +114,6 @@ require_once __DIR__ . '/includes/admin_layout.php';
                     <th style="padding:0.75rem 1rem; text-align:center; font-weight:700; color:#ffffff; white-space:nowrap; background:#0f172a;">Records</th>
                     <th style="padding:0.75rem 1rem; text-align:left; font-weight:700; color:#ffffff; background:#0f172a;">Generated Excel File</th>
                     <th style="padding:0.75rem 1rem; text-align:center; font-weight:700; color:#ffffff; white-space:nowrap; background:#0f172a;">Unprotect Password</th>
-                    <th style="padding:0.75rem 1rem; text-align:center; font-weight:700; color:#ffffff; white-space:nowrap; background:#0f172a;">Audit Sign-Off</th>
                 </tr>
             </thead>
             <tbody id="vault-tbody">
@@ -130,7 +129,7 @@ require_once __DIR__ . '/includes/admin_layout.php';
                     if (empty($vaultSessions)):
                 ?>
                     <tr>
-                        <td colspan="7" style="padding:2rem; text-align:center; color:var(--text-muted);">
+                        <td colspan="6" style="padding:2rem; text-align:center; color:var(--text-muted);">
                             No submission batches logged yet.
                         </td>
                     </tr>
@@ -154,13 +153,6 @@ require_once __DIR__ . '/includes/admin_layout.php';
                             <div id="vault-pass-cell-<?= $vSess['id'] ?>">
                                 <button onclick="revealVaultPassword(<?= $vSess['id'] ?>)" class="btn-admin-secondary" style="font-size:0.75rem; padding:0.25rem 0.65rem; border-radius:6px;" title="Reveal unprotect key for Airtel Admin">
                                     <i class="fa-solid fa-eye"></i> Reveal Password
-                                </button>
-                            </div>
-                        </td>
-                        <td style="padding:0.65rem 1rem; text-align:center; white-space:nowrap;">
-                            <div id="audit-cell-<?= $vSess['id'] ?>">
-                                <button onclick="markBatchAudited(<?= $vSess['id'] ?>)" class="btn-admin-outline" style="font-size:0.75rem; padding:0.25rem 0.65rem; border-radius:6px; color:#16a34a; border-color:#86efac;" title="Mark this batch as verified &amp; audited by Admin">
-                                    <i class="fa-solid fa-square-check"></i> Mark Audited
                                 </button>
                             </div>
                         </td>
@@ -247,19 +239,27 @@ function markBatchAudited(sessionId) {
     <div class="admin-card-title">
         <i class="fa-solid fa-shield-halved" style="color:#0284c7;"></i> Data Health &amp; Audit Registry
     </div>
+
+    <!-- 100% Sanitization Active Banner -->
+    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:.75rem 1rem; margin-bottom:1.25rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem;">
+        <span style="font-size:.85rem; font-weight:700; color:#15803d; display:flex; align-items:center; gap:.5rem;">
+            <i class="fa-solid fa-circle-check" style="font-size:1.1rem; color:#16a34a;"></i> 100% Pre-Submission Upload Sanitization Active
+        </span>
+        <span style="font-size:.78rem; color:#166534; font-weight:600;">All incoming uploads are pre-validated in Data Preparation before database commit.</span>
+    </div>
+
     <p style="font-size:.875rem;color:var(--text-secondary);margin-bottom:1.5rem;line-height:1.6;">
-        Below is the health audit of your database records. All incoming submissions are pre-validated on upload to guarantee 100% data quality.
-        Click <strong>Inspect Records (View Only)</strong> or <strong>View Breakdown</strong> to audit historical items.
+        Review database compliance metrics and sign off on <strong>True Duplicate Claims</strong> below.
     </p>
 
     <?php
     $checks = [
-        ['field'=>'owner_name',       'mode'=>'missing_owner',   'label'=>'Missing Owner Name',          'sub'=>'Records with no owner name set',                                          'icon'=>'fa-user-slash',     'count'=>$missingOwner,    'isDup'=>false, 'isInfo'=>false],
-        ['field'=>'id_passport_no',   'mode'=>'missing_id',      'label'=>'Missing ID / Passport No.',   'sub'=>'Records with no ID or passport number',                                   'icon'=>'fa-id-card',        'count'=>$missingId,       'isDup'=>false, 'isInfo'=>false],
-        ['field'=>'date_of_birth',    'mode'=>'missing_dob',     'label'=>'Missing Date of Birth',       'sub'=>'Records where date of birth is not set',                                  'icon'=>'fa-calendar-xmark', 'count'=>$missingDOB,      'isDup'=>false, 'isInfo'=>false],
-        ['field'=>'account_number',   'mode'=>'missing_account', 'label'=>'Missing Account Number',      'sub'=>'Records with no account number',                                          'icon'=>'fa-hashtag',        'count'=>$missingAccount,  'isDup'=>false, 'isInfo'=>false],
-        ['field'=>'true_duplicates',  'mode'=>'true_dup',        'label'=>'Duplicate Claims',            'sub'=>'Same Account Number AND Same ID/Passport Number (Audit Required)',       'icon'=>'fa-copy',           'count'=>$trueDuplicates,  'isDup'=>true,  'isInfo'=>false],
-        ['field'=>'recycled_accounts','mode'=>'recycled',        'label'=>'Recycled SIM Accounts',        'sub'=>'Same Account Number BUT Different Owners/IDs (Valid Telecom Reallocation)','icon'=>'fa-arrows-rotate',  'count'=>$recycledAccounts,'isDup'=>true,  'isInfo'=>true],
+        ['field'=>'true_duplicates',  'mode'=>'true_dup',        'label'=>'True Duplicate Claims (Audit Required)', 'sub'=>'Identical Account Number AND Identical ID/Passport (Requires Admin Audit Sign-Off)', 'icon'=>'fa-copy',           'count'=>$trueDuplicates,  'isDup'=>true,  'isInfo'=>false],
+        ['field'=>'recycled_accounts','mode'=>'recycled',        'label'=>'Recycled SIM Accounts',                  'sub'=>'Same Account Number BUT Different Owners/IDs (Valid Telecom Reallocation)','icon'=>'fa-arrows-rotate',  'count'=>$recycledAccounts,'isDup'=>true,  'isInfo'=>true],
+        ['field'=>'owner_name',       'mode'=>'missing_owner',   'label'=>'Missing Owner Name',                    'sub'=>'Records with no owner name set (Pre-Sanitized on Upload)',                                  'icon'=>'fa-user-slash',     'count'=>$missingOwner,    'isDup'=>false, 'isInfo'=>false],
+        ['field'=>'id_passport_no',   'mode'=>'missing_id',      'label'=>'Missing ID / Passport No.',             'sub'=>'Records with no ID or passport number (Pre-Sanitized on Upload)',                           'icon'=>'fa-id-card',        'count'=>$missingId,       'isDup'=>false, 'isInfo'=>false],
+        ['field'=>'date_of_birth',    'mode'=>'missing_dob',     'label'=>'Missing Date of Birth',                 'sub'=>'Records where date of birth is not set (Pre-Sanitized on Upload)',                          'icon'=>'fa-calendar-xmark', 'count'=>$missingDOB,      'isDup'=>false, 'isInfo'=>false],
+        ['field'=>'account_number',   'mode'=>'missing_account', 'label'=>'Missing Account Number',                'sub'=>'Records with no account number (Pre-Sanitized on Upload)',                                  'icon'=>'fa-hashtag',        'count'=>$missingAccount,  'isDup'=>false, 'isInfo'=>false],
     ];
     ?>
 
@@ -323,7 +323,7 @@ function markBatchAudited(sessionId) {
     <?php endforeach; ?>
     </div>
 
-    <!-- ── Paginated Edit Panel for Missing Records ── -->
+    <!-- ── Paginated View Panel for Missing Records (READ-ONLY) ── -->
     <div id="missing-edit-panel" style="display:none;">
         <div style="border-top:2px solid #e5e7eb;padding-top:1.25rem;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;flex-wrap:wrap;gap:.5rem;">
@@ -334,9 +334,8 @@ function markBatchAudited(sessionId) {
 
             <!-- Controls row -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;flex-wrap:wrap;gap:.5rem;">
-                <div style="font-size:.82rem;color:var(--text-muted);">
-                    <i class="fa-solid fa-circle-info"></i>
-                    Click any <span style="color:#2563eb;font-weight:600;">highlighted cell</span> to edit directly. Press <kbd>Enter</kbd> to save, <kbd>Esc</kbd> to cancel.
+                <div style="font-size:.82rem;color:#0369a1;background:#f0f9ff;border:1px solid #bae6fd;border-radius:7px;padding:.35rem .8rem;display:inline-flex;align-items:center;gap:.4rem;">
+                    <i class="fa-solid fa-eye"></i> <strong>Read-Only View</strong> — Pre-sanitized on upload. These records are historical audit references.
                 </div>
                 <div style="display:flex;gap:.5rem;align-items:center;">
                     <select id="edit-per-page" class="admin-select" style="padding:.25rem .5rem;font-size:.82rem;width:auto;"
@@ -394,10 +393,10 @@ function markBatchAudited(sessionId) {
                 <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
                     <select id="dup-filter-status" class="admin-select" style="padding:.25rem .5rem;font-size:.82rem;width:auto;"
                             onchange="loadDupAccounts(1, _dupMode)">
-                        <option value="all" selected>All Audit Statuses</option>
-                        <option value="unreviewed">Not Reviewed</option>
-                        <option value="confirmed">Confirmed True Duplicate</option>
-                        <option value="cleared">Cleared / False Duplicate</option>
+                        <option value="all" selected>All Statuses</option>
+                        <option value="unreviewed">Not Flagged</option>
+                        <option value="confirmed">Flagged for Uploader Review</option>
+                        <option value="cleared">Cleared / Valid Asset</option>
                     </select>
                     <div style="position:relative;">
                         <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:.6rem;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:.78rem;"></i>
@@ -496,27 +495,29 @@ async function loadMissingPage(page) {
         const from = ((page - 1) * parseInt(perPage)) + 1;
         const to   = Math.min(page * parseInt(perPage), d.total);
         document.getElementById('edit-panel-count').innerHTML =
-            `Showing <strong>${from}–${to}</strong> of <strong>${d.total.toLocaleString()}</strong> records`;
+            `Showing <strong>${from}–${to}</strong> of <strong>${d.total.toLocaleString()}</strong> records (Read-Only — Pre-Sanitized Historical Audit)`;
 
         if (!d.records.length) {
             tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#16a34a;padding:2rem;"><i class="fa-solid fa-check"></i> No records with this issue.</td></tr>';
             return;
         }
 
-        tbody.innerHTML = d.records.map((r, i) => `
+        // READ-ONLY rows — no editable cells
+        tbody.innerHTML = d.records.map((r, i) => {
+            const missingStyle = (val) => !val || String(val).trim() === '' ? 'color:#ea580c;font-style:italic;' : '';
+            const display = (val) => !val || String(val).trim() === '' ? '<em style="color:#ea580c;font-style:italic;">—</em>' : escHtml(val);
+            return `
             <tr id="edit-row-${escHtml(r.record_id)}">
                 <td style="color:var(--text-muted);">${((page-1)*parseInt(perPage))+ i + 1}</td>
                 <td style="font-weight:600;color:var(--airtel-red);">${escHtml(r.record_id)}</td>
-                ${_missingField === 'owner_name'     ? makeEditableCell(r.record_id, 'owner_name',    r.owner_name,    'text', true) : `<td>${escHtml(r.owner_name || '—')}</td>`}
-                ${_missingField === 'id_passport_no' ? makeEditableCell(r.record_id, 'id_passport_no',r.id_passport_no,'text', true) : `<td>${escHtml(r.id_passport_no || '—')}</td>`}
-                ${_missingField === 'account_number' ? makeEditableCell(r.record_id, 'account_number',r.account_number, 'text', true) : `<td>${escHtml(r.account_number || '—')}</td>`}
-                ${_missingField === 'date_of_birth'  ? makeEditableCell(r.record_id, 'date_of_birth', r.date_of_birth,  'date', true) : `<td>${escHtml(r.date_of_birth || '—')}</td>`}
+                <td style="${_missingField==='owner_name'     ? 'background:#fffbeb;' : ''}">${display(r.owner_name)}</td>
+                <td style="${_missingField==='id_passport_no' ? 'background:#fffbeb;' : ''}">${display(r.id_passport_no)}</td>
+                <td style="${_missingField==='account_number' ? 'background:#fffbeb;' : ''}">${display(r.account_number)}</td>
+                <td style="${_missingField==='date_of_birth'  ? 'background:#fffbeb;' : ''}">${display(r.date_of_birth)}</td>
                 <td style="color:var(--text-secondary);">${r.due_amount ? 'KSh ' + parseFloat(r.due_amount).toLocaleString() : '—'}</td>
                 <td><span class="admin-badge ${r.status === 'Claimed' ? 'badge-active' : 'badge-inactive'}">${escHtml(r.status)}</span></td>
-            </tr>`).join('');
-
-        // Attach inline-edit listeners
-        document.querySelectorAll('#edit-tbody .editable-cell').forEach(attachEditListener);
+            </tr>`;
+        }).join('');
 
         // Pagination
         if (d.total_pages > 1) {
@@ -675,8 +676,8 @@ async function refreshCardCounts() {
 
                     const safeLabel = escHtml(meta.label);
                     if (meta.isDup) {
-                        const btnText = isInfo ? 'View Breakdown' : 'View & Edit';
-                        const icon    = isInfo ? 'fa-eye' : 'fa-pen-to-square';
+                        const btnText = isInfo ? 'View Breakdown' : 'Inspect Records';
+                        const icon    = isInfo ? 'fa-eye' : 'fa-magnifying-glass';
                         actEl.innerHTML = `
                             <button class="btn-admin-outline" style="font-size:.8rem;padding:.3rem .8rem;" onclick="loadDupAccounts(1, '${meta.mode}')">
                                 <i class="fa-solid ${icon}"></i> ${btnText}
@@ -688,7 +689,7 @@ async function refreshCardCounts() {
                     } else {
                         actEl.innerHTML = `
                             <button class="btn-admin-outline" style="font-size:.8rem;padding:.3rem .8rem;" onclick="openMissingPanel('${f}', '${meta.mode}', '${safeLabel}')">
-                                <i class="fa-solid fa-pen-to-square"></i> View & Edit
+                                <i class="fa-solid fa-magnifying-glass"></i> Inspect (Read-Only)
                             </button>
                             <button class="btn-admin-secondary" style="font-size:.8rem;padding:.3rem .8rem;" onclick="startExport('${meta.mode}', '${safeLabel}')">
                                 <i class="fa-solid fa-file-csv"></i> Export
@@ -757,31 +758,30 @@ function toggleDupGroup(groupId) {
     }
 }
 
-async function confirmDupResolution(groupKey) {
-    const sel = document.getElementById('select-res-' + groupKey);
-    if (!sel || !sel.value) {
-        AdminToast.error('Please select an audit decision first (Confirmed True Duplicate or False Duplicate / Cleared).');
-        return;
+async function flagDupForUploaderReview(groupKey, btn) {
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Flagging…';
     }
-
-    const resolution = sel.value;
-    sel.disabled = true;
 
     try {
         const fd = new FormData();
         fd.append('group_key', groupKey);
-        fd.append('resolution', resolution);
 
-        const res = await fetch('ajax/mark_dup_reviewed.php', { method: 'POST', body: fd });
+        const res = await fetch('ajax/flag_dup_for_review.php', { method: 'POST', body: fd });
         const d   = await res.json();
 
         if (!d.success) throw new Error(d.error);
 
-        AdminToast.success(`Saved decision: "${resolution}". Record group is now locked.`);
+        AdminToast.success(`Group flagged. The uploader <strong>${escHtml(d.uploader || 'officer')}</strong> has been notified to confirm or clarify this duplicate.`);
+        loadDupAccounts(_dupPage, _dupMode, true);
         refreshCardCounts();
     } catch (err) {
-        AdminToast.error(err.message || 'This duplicate claim has already been reviewed and locked');
-        sel.disabled = false;
+        AdminToast.error(err.message || 'Could not flag this group.');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-flag"></i> Flag for Uploader Review';
+        }
     }
 }
 
@@ -892,13 +892,13 @@ async function loadDupAccounts(page, mode, skipScroll = false) {
                 const reviewedBy = existingNote && existingNote.noted_by ? `${escHtml(existingNote.noted_by)} · ${escHtml(existingNote.noted_at)}` : '';
 
                 if (isRev) {
-                    // ── REVIEWED: single collapsed summary row + hidden detail rows ──
-                    const bgColor     = isTrue ? '#fef2f2' : '#f0fdf4';
-                    const borderColor = isTrue ? '#ef4444' : '#16a34a';
-                    const textColor   = isTrue ? '#b91c1c' : '#15803d';
-                    const badgeBg     = isTrue ? '#fee2e2' : '#dcfce7';
-                    const badgeBorder = isTrue ? '#fca5a5' : '#bbf7d0';
-                    const lockIcon    = isTrue ? 'fa-lock' : 'fa-circle-check';
+                    // ── FLAGGED: single collapsed summary row + hidden detail rows ──
+                    const bgColor     = '#fffbeb';
+                    const borderColor = '#d97706';
+                    const textColor   = '#92400e';
+                    const badgeBg     = '#fef3c7';
+                    const badgeBorder = '#fcd34d';
+                    const flagIcon    = 'fa-flag';
 
                     htmlRows.push(`
                         <tr style="background:${bgColor};border-top:2px solid ${borderColor};cursor:pointer;" onclick="toggleDupGroup('${groupId}')">
@@ -907,7 +907,7 @@ async function loadDupAccounts(page, mode, skipScroll = false) {
                                     <div style="display:flex;align-items:center;gap:.55rem;flex:1;min-width:0;">
                                         <i class="fa-solid fa-chevron-right" id="icon-${groupId}" style="color:${textColor};font-size:.78rem;flex-shrink:0;transition:transform .2s;"></i>
                                         <span style="color:${textColor};font-weight:700;font-size:.83rem;">
-                                            <i class="fa-solid ${lockIcon}"></i>
+                                            <i class="fa-solid ${flagIcon}"></i>
                                             Account <strong>${escHtml(r0.account_number || '—')}</strong>
                                             &bull; ID <strong>${escHtml(r0.id_passport_no || 'N/A')}</strong>
                                             &bull; Last Txn: <strong>${escHtml(r0.last_transaction || '—')}</strong>
@@ -917,9 +917,9 @@ async function loadDupAccounts(page, mode, skipScroll = false) {
                                     </div>
                                     <div style="display:flex;align-items:center;gap:.5rem;flex-shrink:0;">
                                         <span style="display:inline-flex;align-items:center;gap:.3rem;font-size:.78rem;padding:.28rem .7rem;background:${badgeBg};color:${textColor};border:1px solid ${badgeBorder};border-radius:6px;font-weight:700;">
-                                            <i class="fa-solid fa-lock"></i> ${escHtml(resNote)}
+                                            <i class="fa-solid fa-flag"></i> Flagged for Uploader Review
                                         </span>
-                                        ${reviewedBy ? `<span style="font-size:.71rem;color:#64748b;">${reviewedBy}</span>` : ''}
+                                        ${reviewedBy ? `<span style="font-size:.71rem;color:#64748b;">by ${reviewedBy}</span>` : ''}
                                     </div>
                                 </div>
                             </td>
@@ -959,14 +959,9 @@ async function loadDupAccounts(page, mode, skipScroll = false) {
                                         <span style="font-size:.72rem;color:#ea580c;font-weight:600;margin-left:.4rem;">(${groupRecords.length} duplicate record${groupRecords.length > 1 ? 's' : ''} — Action Required)</span>
                                     </div>
                                     <div style="display:flex;align-items:center;gap:.6rem;flex-shrink:0;">
-                                        <select id="select-res-${safeKey}" class="admin-select" style="padding:.3rem .6rem;font-size:.78rem;width:215px;border-color:#fed7aa;background:#fff;font-family:inherit;">
-                                            <option value="" disabled selected>-- Select Audit Decision --</option>
-                                            <option value="Confirmed True Duplicate">Confirmed True Duplicate</option>
-                                            <option value="False Duplicate / Cleared">False Duplicate / Cleared</option>
-                                        </select>
-                                        <button onclick="confirmDupResolution('${safeKey}')"
-                                                style="background:#ea580c;color:#fff;border:none;border-radius:6px;padding:.35rem .85rem;font-size:.77rem;font-weight:700;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:.3rem;">
-                                            <i class="fa-solid fa-floppy-disk"></i> Save &amp; Lock
+                                        <button id="flag-btn-${safeKey}" onclick="flagDupForUploaderReview('${safeKey}', this)"
+                                                style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:.4rem 1rem;font-size:.78rem;font-weight:700;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:.4rem;box-shadow:0 2px 8px rgba(217,119,6,.35);" title="Send this duplicate group back to the uploader for confirmation">
+                                            <i class="fa-solid fa-flag"></i> Flag for Uploader Review
                                         </button>
                                     </div>
                                 </div>

@@ -54,6 +54,10 @@ try {
  * Returns a connection to the specific UFAA database.
  */
 function get_db_connection() {
+    static $pdoInstance = null;
+    if ($pdoInstance !== null) {
+        return $pdoInstance;
+    }
     try {
         $pdo = new PDO(
             "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4",
@@ -66,7 +70,8 @@ function get_db_connection() {
             ]
         );
         ensure_ufaa_columns($pdo);
-        return $pdo;
+        $pdoInstance = $pdo;
+        return $pdoInstance;
     } catch (PDOException $e) {
         return null;
     }
@@ -77,6 +82,12 @@ function get_db_connection() {
  */
 function ensure_ufaa_columns($pdo) {
     if (!$pdo) return;
+    static $schemaChecked = false;
+    if ($schemaChecked) return;
+    if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['schema_checked'])) {
+        $schemaChecked = true;
+        return;
+    }
     try {
         $chk = $pdo->query("SHOW COLUMNS FROM `unclaimed_assets` LIKE 'letter_generated'");
         if ($chk->rowCount() === 0) {
@@ -126,6 +137,11 @@ function ensure_ufaa_columns($pdo) {
         if (!in_array('ft_owner_name', $existingIndexNames, true)) {
             @$pdo->exec("CREATE FULLTEXT INDEX `ft_owner_name` ON `unclaimed_assets` (`owner_name`)");
         }
+
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION['schema_checked'] = true;
+        }
+        $schemaChecked = true;
     } catch (Exception $e) {
         // Table doesn't exist yet or permission limited
     }

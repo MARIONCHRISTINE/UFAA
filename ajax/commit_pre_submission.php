@@ -28,7 +28,24 @@ if (!isset($data['rows']) || !is_array($data['rows']) || empty($data['rows'])) {
 }
 
 $rows = $data['rows'];
+$draftId = (int)($data['draft_id'] ?? $_POST['draft_id'] ?? 0);
 $uploadedBy = $_SESSION['admin_user']['username'] ?? $_SESSION['username'] ?? 'Compliance Officer';
+$userRole   = $_SESSION['admin_user']['role'] ?? $_SESSION['role'] ?? 'officer';
+
+// Ownership check: Only file owner or admin can submit
+if ($draftId > 0) {
+    $chkStmt = $pdo->prepare("SELECT `created_by` FROM `sandbox_drafts` WHERE `id` = ?");
+    $chkStmt->execute([$draftId]);
+    $draftInfo = $chkStmt->fetch(PDO::FETCH_ASSOC);
+    if ($draftInfo) {
+        $owner = $draftInfo['created_by'];
+        if ($owner !== $uploadedBy && strtolower($userRole) !== 'admin') {
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => "Only the file owner ({$owner}) is authorized to submit this batch to UFAA."]);
+            exit;
+        }
+    }
+}
 
 // Generate dynamic password: UFAA-AIRTEL-XXXXXX
 $randomCode = strtoupper(bin2hex(random_bytes(3))); // 6 hex chars
@@ -42,22 +59,11 @@ $baseFileName = 'UFAA_Submission_' . date('Y-m-d') . '_' . $randomCode . '.xlsx'
 try {
     $pdo->beginTransaction();
 
-    $stmtInsert = $pdo->prepare("
-        INSERT INTO `unclaimed_assets` (
-            `owner_name`,
-            `id_passport_no`,
-            `date_of_birth`,
-            `account_number`,
-            `last_transaction`,
-            `due_amount`,
-            `compilation_date`,
-            `status`,
-            `letter_received`,
-            `uploaded_at`
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'Unclaimed', 'No', NOW())
-    ");
-
     $countInserted = 0;
+    $batchSize = 250;
+    $batchValues = [];
+    $batchParams = [];
+
     foreach ($rows as $row) {
         $ownerName   = trim((string)($row['owner_name'] ?? ''));
         $idPassport  = trim((string)($row['id_passport_no'] ?? ''));
@@ -76,16 +82,28 @@ try {
             }
         }
 
-        $stmtInsert->execute([
-            $ownerName !== '' ? $ownerName : null,
-            $idPassport !== '' ? $idPassport : null,
-            $dob !== '' ? $dob : null,
-            $accountNo !== '' ? $accountNo : null,
-            $lastTx !== '' ? $lastTx : null,
-            $dueAmount !== '' ? $dueAmount : null,
-            $formattedDate
-        ]);
+        $batchValues[] = "(?, ?, ?, ?, ?, ?, ?, 'Unclaimed', 'No', NOW())";
+        $batchParams[] = $ownerName !== '' ? $ownerName : null;
+        $batchParams[] = $idPassport !== '' ? $idPassport : null;
+        $batchParams[] = $dob !== '' ? $dob : null;
+        $batchParams[] = $accountNo !== '' ? $accountNo : null;
+        $batchParams[] = $lastTx !== '' ? $lastTx : null;
+        $batchParams[] = $dueAmount !== '' ? $dueAmount : null;
+        $batchParams[] = $formattedDate;
+
         $countInserted++;
+
+        if (count($batchValues) >= $batchSize) {
+            $sql = "INSERT INTO `unclaimed_assets` (`owner_name`, `id_passport_no`, `date_of_birth`, `account_number`, `last_transaction`, `due_amount`, `compilation_date`, `status`, `letter_received`, `uploaded_at`) VALUES " . implode(', ', $batchValues);
+            $pdo->prepare($sql)->execute($batchParams);
+            $batchValues = [];
+            $batchParams = [];
+        }
+    }
+
+    if (!empty($batchValues)) {
+        $sql = "INSERT INTO `unclaimed_assets` (`owner_name`, `id_passport_no`, `date_of_birth`, `account_number`, `last_transaction`, `due_amount`, `compilation_date`, `status`, `letter_received`, `uploaded_at`) VALUES " . implode(', ', $batchValues);
+        $pdo->prepare($sql)->execute($batchParams);
     }
 
     // Insert into upload_sessions table
@@ -95,6 +113,12 @@ try {
     ");
     $stmtSession->execute([$uploadedBy, $baseFileName, $countInserted, $protectionPassword]);
     $sessionId = $pdo->lastInsertId();
+
+    // Mark sandbox_draft as submitted so it leaves active draft list immediately
+    if ($draftId > 0) {
+        $stmtDraft = $pdo->prepare("UPDATE `sandbox_drafts` SET `status` = 'submitted', `last_edited_by` = ?, `updated_at` = NOW() WHERE `id` = ?");
+        $stmtDraft->execute([$uploadedBy, $draftId]);
+    }
 
     // Insert into uploaded_files tracking table
     $stmtFile = $pdo->prepare("INSERT IGNORE INTO `uploaded_files` (`file_name`) VALUES (?)");
