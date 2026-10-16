@@ -18,13 +18,14 @@ try {
     $missingAccount = (int)$pdo->query("SELECT COUNT(*) FROM unclaimed_assets WHERE account_number IS NULL OR account_number = ''")->fetchColumn();
     
     // True Duplicates (Unreviewed groups sharing account_number + id_passport_no + last_txn + batch)
+    // LEFT(col,10) strips time portion from timestamps (e.g. '2018-08-09 00:00:00' -> '2018-08-09')
     $trueDuplicates = (int)$pdo->query("
         SELECT COUNT(*) FROM (
-            SELECT account_number, id_passport_no, last_transaction, compilation_date
+            SELECT account_number, id_passport_no, LEFT(TRIM(last_transaction),10) AS last_transaction, LEFT(TRIM(compilation_date),10) AS compilation_date
             FROM unclaimed_assets
             WHERE account_number IS NOT NULL AND account_number != ''
               AND id_passport_no IS NOT NULL AND id_passport_no != ''
-            GROUP BY account_number, id_passport_no, last_transaction, compilation_date
+            GROUP BY account_number, id_passport_no, LEFT(TRIM(last_transaction),10), LEFT(TRIM(compilation_date),10)
             HAVING COUNT(*) > 1
         ) t
         LEFT JOIN duplicate_notes dn ON dn.group_key = CONCAT(

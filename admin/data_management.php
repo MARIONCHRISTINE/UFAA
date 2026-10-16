@@ -28,7 +28,7 @@ if ($pdo) {
         $missingId        = (int)$pdo->query("SELECT COUNT(*) FROM unclaimed_assets WHERE id_passport_no IS NULL OR id_passport_no=''")->fetchColumn();
         $missingDOB       = (int)$pdo->query("SELECT COUNT(*) FROM unclaimed_assets WHERE date_of_birth IS NULL")->fetchColumn();
         $missingAccount   = (int)$pdo->query("SELECT COUNT(*) FROM unclaimed_assets WHERE account_number IS NULL OR account_number=''")->fetchColumn();
-        $trueDuplicates   = (int)$pdo->query("SELECT COUNT(*) FROM (SELECT account_number, id_passport_no, last_transaction, compilation_date FROM unclaimed_assets WHERE account_number IS NOT NULL AND account_number!='' AND id_passport_no IS NOT NULL AND id_passport_no!='' GROUP BY account_number, id_passport_no, last_transaction, compilation_date HAVING COUNT(*) > 1) t LEFT JOIN duplicate_notes dn ON dn.group_key = CONCAT(COALESCE(TRIM(t.account_number),''),'___',COALESCE(TRIM(t.id_passport_no),''),'___',COALESCE(TRIM(t.last_transaction),''),'___',COALESCE(TRIM(t.compilation_date),'')) WHERE dn.reviewed IS NULL OR dn.reviewed = 0")->fetchColumn();
+        $trueDuplicates   = (int)$pdo->query("SELECT COUNT(*) FROM (SELECT account_number, id_passport_no, LEFT(TRIM(last_transaction),10) AS last_transaction, LEFT(TRIM(compilation_date),10) AS compilation_date FROM unclaimed_assets WHERE account_number IS NOT NULL AND account_number!='' AND id_passport_no IS NOT NULL AND id_passport_no!='' GROUP BY account_number, id_passport_no, LEFT(TRIM(last_transaction),10), LEFT(TRIM(compilation_date),10) HAVING COUNT(*) > 1) t LEFT JOIN duplicate_notes dn ON dn.group_key = CONCAT(COALESCE(TRIM(t.account_number),''),'___',COALESCE(TRIM(t.id_passport_no),''),'___',COALESCE(TRIM(t.last_transaction),''),'___',COALESCE(TRIM(t.compilation_date),'')) WHERE dn.reviewed IS NULL OR dn.reviewed = 0")->fetchColumn();
         $recycledAccounts = (int)$pdo->query("SELECT COUNT(*) FROM (SELECT account_number FROM unclaimed_assets WHERE account_number IS NOT NULL AND account_number!='' GROUP BY account_number HAVING COUNT(DISTINCT COALESCE(NULLIF(TRIM(id_passport_no),''), owner_name)) > 1) t")->fetchColumn();
     } catch (Exception $e) {}
 }
@@ -845,7 +845,7 @@ async function loadDupAccounts(page, mode, skipScroll = false) {
         const groupOrder = [];
         d.records.forEach(r => {
             const key = _dupMode === 'true_dup'
-                ? ( (r.account_number||'').trim() + '___' + (r.id_passport_no||'').trim() + '___' + (r.last_transaction||'').trim() + '___' + (r.compilation_date||'').trim() )
+                ? ( (r.account_number||'').trim() + '___' + (r.id_passport_no||'').trim() + '___' + (r.last_transaction||'').trim().substring(0,10) + '___' + (r.compilation_date||'').trim().substring(0,10) )
                 : (r.account_number||'').trim();
             if (!groupMap[key]) { groupMap[key] = []; groupOrder.push(key); }
             groupMap[key].push(r);

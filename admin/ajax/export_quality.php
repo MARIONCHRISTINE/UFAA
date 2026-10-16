@@ -121,11 +121,11 @@ function _build_where(string $mode): string
         case 'dup_accounts':
         case 'true_dup':
             return "account_number IS NOT NULL AND TRIM(account_number) != '' AND id_passport_no IS NOT NULL AND TRIM(id_passport_no) != ''
-                    AND CONCAT(COALESCE(TRIM(account_number),''),'___',COALESCE(TRIM(id_passport_no),''),'___',COALESCE(TRIM(last_transaction),''),'___',COALESCE(TRIM(compilation_date),'')) IN (
-                        SELECT CONCAT(COALESCE(TRIM(account_number),''),'___',COALESCE(TRIM(id_passport_no),''),'___',COALESCE(TRIM(last_transaction),''),'___',COALESCE(TRIM(compilation_date),''))
+                    AND CONCAT(COALESCE(TRIM(account_number),''),'___',COALESCE(TRIM(id_passport_no),''),'___',COALESCE(LEFT(TRIM(last_transaction),10),''),'___',COALESCE(LEFT(TRIM(compilation_date),10),'')) IN (
+                        SELECT CONCAT(COALESCE(TRIM(account_number),''),'___',COALESCE(TRIM(id_passport_no),''),'___',COALESCE(LEFT(TRIM(last_transaction),10),''),'___',COALESCE(LEFT(TRIM(compilation_date),10),''))
                         FROM unclaimed_assets
                         WHERE account_number IS NOT NULL AND TRIM(account_number) != '' AND id_passport_no IS NOT NULL AND TRIM(id_passport_no) != ''
-                        GROUP BY account_number, id_passport_no, last_transaction, compilation_date
+                        GROUP BY account_number, id_passport_no, LEFT(TRIM(last_transaction),10), LEFT(TRIM(compilation_date),10)
                         HAVING COUNT(*) > 1
                     )";
         case 'recycled':

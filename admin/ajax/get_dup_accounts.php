@@ -97,23 +97,25 @@ try {
             $queryParams[':s4'] = "%$search%";
         }
 
-        $groupKeyConcat = "CONCAT(COALESCE(TRIM(d.account_number),''),'___',COALESCE(TRIM(d.id_passport_no),''),'___',COALESCE(TRIM(d.last_transaction),''),'___',COALESCE(TRIM(d.compilation_date),''))";
+        // Use LEFT(col,10) to strip time parts (e.g. '2018-08-09 00:00:00' → '2018-08-09') so
+        // DB timestamps match date-only values from uploaded spreadsheets.
+        $groupKeyConcat = "CONCAT(COALESCE(TRIM(d.account_number),''),'___',COALESCE(TRIM(d.id_passport_no),''),'___',COALESCE(LEFT(TRIM(d.last_transaction),10),''),'___',COALESCE(LEFT(TRIM(d.compilation_date),10),''))";
 
         $statsStmt = $pdo->prepare("
             SELECT COUNT(DISTINCT {$groupKeyConcat}) AS distinct_dups,
                    COUNT(*) AS total_records
             FROM unclaimed_assets a
             INNER JOIN (
-                SELECT account_number, id_passport_no, last_transaction, compilation_date
+                SELECT account_number, id_passport_no, LEFT(TRIM(last_transaction),10) AS last_transaction, LEFT(TRIM(compilation_date),10) AS compilation_date
                 FROM unclaimed_assets
                 WHERE account_number IS NOT NULL AND account_number != ''
                   AND id_passport_no IS NOT NULL AND id_passport_no != ''
-                GROUP BY account_number, id_passport_no, last_transaction, compilation_date
+                GROUP BY account_number, id_passport_no, LEFT(TRIM(last_transaction),10), LEFT(TRIM(compilation_date),10)
                 HAVING COUNT(*) > 1
             ) d ON a.account_number = d.account_number
                AND a.id_passport_no = d.id_passport_no
-               AND (a.last_transaction = d.last_transaction OR (a.last_transaction IS NULL AND d.last_transaction IS NULL))
-               AND (a.compilation_date = d.compilation_date OR (a.compilation_date IS NULL AND d.compilation_date IS NULL))
+               AND (LEFT(TRIM(a.last_transaction),10) = d.last_transaction OR (a.last_transaction IS NULL AND d.last_transaction IS NULL))
+               AND (LEFT(TRIM(a.compilation_date),10) = d.compilation_date OR (a.compilation_date IS NULL AND d.compilation_date IS NULL))
             LEFT JOIN duplicate_notes dn ON dn.group_key = {$groupKeyConcat}
             {$whereClause}
         ");
@@ -128,16 +130,16 @@ try {
                    a.date_of_birth, a.last_transaction, a.due_amount, a.compilation_date, a.status
             FROM unclaimed_assets a
             INNER JOIN (
-                SELECT account_number, id_passport_no, last_transaction, compilation_date
+                SELECT account_number, id_passport_no, LEFT(TRIM(last_transaction),10) AS last_transaction, LEFT(TRIM(compilation_date),10) AS compilation_date
                 FROM unclaimed_assets
                 WHERE account_number IS NOT NULL AND account_number != ''
                   AND id_passport_no IS NOT NULL AND id_passport_no != ''
-                GROUP BY account_number, id_passport_no, last_transaction, compilation_date
+                GROUP BY account_number, id_passport_no, LEFT(TRIM(last_transaction),10), LEFT(TRIM(compilation_date),10)
                 HAVING COUNT(*) > 1
             ) d ON a.account_number = d.account_number
                AND a.id_passport_no = d.id_passport_no
-               AND (a.last_transaction = d.last_transaction OR (a.last_transaction IS NULL AND d.last_transaction IS NULL))
-               AND (a.compilation_date = d.compilation_date OR (a.compilation_date IS NULL AND d.compilation_date IS NULL))
+               AND (LEFT(TRIM(a.last_transaction),10) = d.last_transaction OR (a.last_transaction IS NULL AND d.last_transaction IS NULL))
+               AND (LEFT(TRIM(a.compilation_date),10) = d.compilation_date OR (a.compilation_date IS NULL AND d.compilation_date IS NULL))
             LEFT JOIN duplicate_notes dn ON dn.group_key = {$groupKeyConcat}
             {$whereClause}
             ORDER BY a.account_number ASC, a.id_passport_no ASC, a.last_transaction ASC, a.compilation_date ASC, a.record_id ASC
