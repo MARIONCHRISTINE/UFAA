@@ -173,33 +173,107 @@ require_once 'includes/layout.php';
     </div>
 
     <!-- Grid Table -->
-    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden;">
-        <div style="background:#f8fafc; padding:.6rem 1.1rem; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:.82rem; font-weight:700; color:var(--text-secondary); display:flex; align-items:center; gap:.5rem;">
-                <i class="fa-solid fa-table-cells"></i> Editable Grid
-                <span id="active-filter-indicator" style="font-size:.72rem; font-weight:700; color:#1d4ed8; background:#dbeafe; padding:1px 7px; border-radius:10px;">Showing All Rows</span>
-            </span>
-            <div id="grid-status" style="font-size:.75rem; font-weight:600; color:#64748b;">Ready</div>
+    <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+        <!-- Top Toolbar & Status -->
+        <div style="background:#f8fafc; padding:.65rem 1.1rem; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.5rem;">
+            <div style="display:flex; align-items:center; gap:.65rem; flex-wrap:wrap;">
+                <span style="font-size:.84rem; font-weight:800; color:var(--text-secondary); display:flex; align-items:center; gap:.5rem;">
+                    <i class="fa-solid fa-table-cells"></i> Editable Grid
+                </span>
+                <span id="active-filter-indicator" style="font-size:.72rem; font-weight:700; color:#1d4ed8; background:#dbeafe; padding:2px 8px; border-radius:10px;">Showing All Rows</span>
+                <span id="pagination-top-summary" style="font-size:.78rem; font-weight:700; color:#475569; background:#f1f5f9; padding:2px 10px; border-radius:8px; border:1px solid #cbd5e1;">Loading rows…</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:.75rem;">
+                <div id="grid-status" style="font-size:.75rem; font-weight:600; color:#64748b;">Ready</div>
+            </div>
         </div>
 
-        <div class="table-responsive-wrapper" id="table-scroll-wrap" onscroll="repositionOverlay()">
+        <!-- Top Pagination Bar -->
+        <div style="background:#ffffff; padding:.55rem 1.1rem; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.65rem;">
+            <!-- Page Size Selector -->
+            <div style="display:flex; align-items:center; gap:.5rem;">
+                <label for="select-page-size" style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.04em;">Rows / Page:</label>
+                <select id="select-page-size" onchange="changePageSize(this.value)" style="padding:.28rem .6rem; border-radius:7px; border:1.5px solid #cbd5e1; font-size:.8rem; font-weight:700; color:#1e293b; background:#f8fafc; cursor:pointer;">
+                    <option value="50000" selected>50,000 rows (Recommended)</option>
+                    <option value="25000">25,000 rows</option>
+                    <option value="10000">10,000 rows</option>
+                    <option value="5000">5,000 rows</option>
+                    <option value="1000">1,000 rows</option>
+                    <option value="500">500 rows</option>
+                </select>
+                <span style="font-size:.73rem; color:#94a3b8;">· Scrollbar enabled for each page</span>
+            </div>
+
+            <!-- Page Navigation Controls -->
+            <div style="display:flex; align-items:center; gap:.4rem; flex-wrap:wrap;">
+                <button id="btn-page-first" onclick="goToPage(1)" class="btn-reset" title="First Page (Page 1)" style="padding:.3rem .55rem; font-size:.78rem; border-radius:6px; border:1px solid #cbd5e1; color:#334155; font-weight:700;">
+                    <i class="fa-solid fa-angles-left"></i> First
+                </button>
+                <button id="btn-page-prev" onclick="goToPage(currentPage - 1)" class="btn-reset" title="Previous Page" style="padding:.3rem .6rem; font-size:.78rem; border-radius:6px; border:1px solid #cbd5e1; color:#334155; font-weight:700;">
+                    <i class="fa-solid fa-chevron-left"></i> Prev
+                </button>
+                
+                <div style="display:flex; align-items:center; gap:.35rem; margin:0 .2rem;">
+                    <span style="font-size:.76rem; font-weight:700; color:#64748b;">Page</span>
+                    <select id="select-current-page" onchange="goToPage(parseInt(this.value))" style="padding:.28rem .55rem; border-radius:7px; border:1.5px solid #3b82f6; font-size:.8rem; font-weight:800; color:#1d4ed8; background:#eff6ff; cursor:pointer;">
+                        <option value="1">Page 1</option>
+                    </select>
+                    <span id="page-total-label" style="font-size:.76rem; font-weight:700; color:#64748b;">of 1</span>
+                </div>
+
+                <button id="btn-page-next" onclick="goToPage(currentPage + 1)" class="btn-reset" title="Next Page" style="padding:.3rem .6rem; font-size:.78rem; border-radius:6px; border:1px solid #cbd5e1; color:#334155; font-weight:700;">
+                    Next <i class="fa-solid fa-chevron-right"></i>
+                </button>
+                <button id="btn-page-last" onclick="goToPage(totalPages)" class="btn-reset" title="Last Page" style="padding:.3rem .55rem; font-size:.78rem; border-radius:6px; border:1px solid #cbd5e1; color:#334155; font-weight:700;">
+                    Last <i class="fa-solid fa-angles-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Scrollable Table Wrapper (Scrollbar for each page with virtual rendering) -->
+        <div class="table-responsive-wrapper" id="table-scroll-wrap" onscroll="handleTableScroll()" style="position:relative; max-height:580px; overflow-y:scroll; overflow-x:auto; background:#ffffff;">
             <div id="presence-overlay-layer"></div>
             <table id="spreadsheet-table" style="width:100%; border-collapse:collapse; font-size:.84rem;">
                 <thead>
-                    <tr style="background:#0f172a; color:#fff; font-weight:700; position:sticky; top:0; z-index:10;">
-                        <th style="padding:.65rem .5rem; width:38px; text-align:center; border-right:1px solid #1e293b;">#</th>
+                    <tr style="background:#0f172a; color:#fff; font-weight:700; position:sticky; top:0; z-index:10; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                        <th style="padding:.65rem .5rem; width:45px; text-align:center; border-right:1px solid #1e293b;">#</th>
                         <th style="padding:.65rem .75rem; min-width:155px; border-right:1px solid #1e293b;">Owner Name *</th>
-                        <th style="padding:.65rem .75rem; min-width:120px; border-right:1px solid #1e293b;">ID / Passport No</th>
-                        <th style="padding:.65rem .75rem; min-width:105px; border-right:1px solid #1e293b;">Date of Birth</th>
-                        <th style="padding:.65rem .75rem; min-width:130px; border-right:1px solid #1e293b;">Account Number *</th>
+                        <th style="padding:.65rem .75rem; min-width:125px; border-right:1px solid #1e293b;">ID / Passport No</th>
+                        <th style="padding:.65rem .75rem; min-width:110px; border-right:1px solid #1e293b;">Date of Birth</th>
+                        <th style="padding:.65rem .75rem; min-width:135px; border-right:1px solid #1e293b;">Account Number *</th>
                         <th style="padding:.65rem .75rem; min-width:140px; border-right:1px solid #1e293b;">Last Transaction</th>
-                        <th style="padding:.65rem .75rem; min-width:115px; text-align:right; border-right:1px solid #1e293b;">Due Amount (KES) *</th>
-                        <th style="padding:.65rem .75rem; min-width:130px; border-right:1px solid #1e293b;">Compilation Date *</th>
-                        <th style="padding:.65rem .75rem; width:60px; text-align:center;">Del</th>
+                        <th style="padding:.65rem .75rem; min-width:120px; text-align:right; border-right:1px solid #1e293b;">Due Amount (KES) *</th>
+                        <th style="padding:.65rem .75rem; min-width:135px; border-right:1px solid #1e293b;">Compilation Date *</th>
+                        <th style="padding:.65rem .75rem; width:55px; text-align:center;">Del</th>
                     </tr>
                 </thead>
                 <tbody id="spreadsheet-tbody"></tbody>
             </table>
+        </div>
+
+        <!-- Bottom Pagination Bar -->
+        <div style="background:#f8fafc; padding:.55rem 1.1rem; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.65rem;">
+            <div style="display:flex; align-items:center; gap:.5rem;">
+                <span id="pagination-bottom-summary" style="font-size:.78rem; font-weight:700; color:#475569;">Showing 0 – 0 of 0</span>
+                <span style="font-size:.72rem; color:#94a3b8;">(Fast virtual scrolling active)</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:.4rem;">
+                <button onclick="goToPage(1)" class="btn-reset" title="First Page" style="padding:.28rem .55rem; font-size:.75rem; border-radius:6px; border:1px solid #cbd5e1; color:#475569; font-weight:700;">
+                    <i class="fa-solid fa-angles-left"></i> First
+                </button>
+                <button onclick="goToPage(currentPage - 1)" class="btn-reset" title="Previous Page" style="padding:.28rem .55rem; font-size:.75rem; border-radius:6px; border:1px solid #cbd5e1; color:#475569; font-weight:700;">
+                    <i class="fa-solid fa-chevron-left"></i> Prev
+                </button>
+                <span id="pagination-bottom-page-badge" style="font-size:.76rem; font-weight:800; color:#1d4ed8; background:#eff6ff; padding:3px 10px; border-radius:6px; border:1px solid #bfdbfe;">
+                    Page 1 / 1
+                </span>
+                <button onclick="goToPage(currentPage + 1)" class="btn-reset" title="Next Page" style="padding:.28rem .55rem; font-size:.75rem; border-radius:6px; border:1px solid #cbd5e1; color:#475569; font-weight:700;">
+                    Next <i class="fa-solid fa-chevron-right"></i>
+                </button>
+                <button onclick="goToPage(totalPages)" class="btn-reset" title="Last Page" style="padding:.28rem .55rem; font-size:.75rem; border-radius:6px; border:1px solid #cbd5e1; color:#475569; font-weight:700;">
+                    Last <i class="fa-solid fa-angles-right"></i>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -302,7 +376,7 @@ require_once 'includes/layout.php';
 </div>
 
 <script>
-/* ─── State ────────────────────────────────────────────── */
+/* ─── State & Pagination Configuration ────────────────── */
 let gridRows               = [];
 let isValidating           = false;
 let currentDraftId         = <?= $draftId ?>;
@@ -315,12 +389,21 @@ let heartbeatTimer         = null;
 let activePresence         = [];
 let activeViewers          = [];
 let latestDuplicateDetails = [];
-let latestValidatedRows    = [];
 let currentCardFilter      = 'all';
 
+// Pagination & Virtual Scroll Configuration
+let currentPage            = 1;
+let pageSize               = 50000; // Default 50,000 rows per page as requested
+let totalPages             = 1;
+let filteredRowIndices     = [];    // Array of global row indices matching filter
+const ROW_HEIGHT           = 38;    // Pixels per table row
+const BUFFER_ROWS          = 25;    // Render buffer above and below visible viewport
+let scrollTicking          = false;
+let expandedDrawers        = new Set();
+
 // Undo / Redo Stacks for Excel Keyboard Shortcuts
-let undoStack        = [];
-let redoStack        = [];
+let undoStack              = [];
+let redoStack              = [];
 
 /* ─── Init ─────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
@@ -357,10 +440,13 @@ function applyOwnerPermissions() {
 
 /* ─── Open existing draft ──────────────────────────────── */
 async function openDraft(draftId) {
+    const statusInd = document.getElementById('grid-status');
+    if (statusInd) statusInd.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading file data…';
+
     try {
         const res  = await fetch(`ajax/sandbox_draft_api.php?action=get&draft_id=${draftId}`);
         const data = await res.json();
-        if (data.status !== 'success') throw new Error(data.message);
+        if (data.status !== 'success') throw new Error(data.message || 'Error loading draft file');
 
         gridRows         = cleanRawRows(data.rows || []);
         currentDraftId   = data.draft_id;
@@ -374,6 +460,8 @@ async function openDraft(draftId) {
         undoStack        = [];
         redoStack        = [];
         currentCardFilter= 'all';
+        currentPage      = 1;
+        expandedDrawers.clear();
 
         document.getElementById('workspace-filename').textContent = currentDraftName || 'Draft';
 
@@ -401,7 +489,7 @@ async function openDraft(draftId) {
         }
 
         applyOwnerPermissions();
-        renderGridTable(gridRows);
+        renderGridTable();
         validateGrid();
         startHeartbeat();
         startLiveSync();
@@ -414,6 +502,7 @@ async function openDraft(draftId) {
 /* ─── Card Filter Trigger ──────────────────────────────── */
 function setCardFilter(filterType) {
     currentCardFilter = filterType;
+    currentPage       = 1; // Reset to page 1 on filter switch
 
     ['card-total','card-clean','card-critical','card-warnings','card-duplicates'].forEach(id => {
         const card = document.getElementById(id);
@@ -435,7 +524,89 @@ function setCardFilter(filterType) {
         ind.textContent = labels[filterType] || 'Showing All Rows';
     }
 
-    renderGridTable(latestValidatedRows.length ? latestValidatedRows : gridRows);
+    const tableWrap = document.getElementById('table-scroll-wrap');
+    if (tableWrap) tableWrap.scrollTop = 0;
+
+    renderGridTable();
+}
+
+/* ─── Pagination Controls ──────────────────────────────── */
+function changePageSize(newSize) {
+    pageSize = parseInt(newSize) || 50000;
+    currentPage = 1;
+    const tableWrap = document.getElementById('table-scroll-wrap');
+    if (tableWrap) tableWrap.scrollTop = 0;
+    renderGridTable();
+}
+
+function goToPage(page) {
+    page = Math.max(1, Math.min(totalPages, parseInt(page) || 1));
+    if (page === currentPage) return;
+    currentPage = page;
+    const tableWrap = document.getElementById('table-scroll-wrap');
+    if (tableWrap) tableWrap.scrollTop = 0;
+    renderVirtualRows(true);
+    updatePaginationUI();
+}
+
+function updatePaginationUI() {
+    const totalFiltered = filteredRowIndices.length;
+    totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+    if (currentPage > totalPages) currentPage = totalPages;
+
+    const startRow = totalFiltered === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    const endRow   = Math.min(totalFiltered, currentPage * pageSize);
+
+    const summaryText = `Showing rows ${startRow.toLocaleString()} – ${endRow.toLocaleString()} of ${totalFiltered.toLocaleString()} (Page ${currentPage} of ${totalPages})`;
+    
+    const topSummary = document.getElementById('pagination-top-summary');
+    if (topSummary) topSummary.textContent = summaryText;
+
+    const bottomSummary = document.getElementById('pagination-bottom-summary');
+    if (bottomSummary) bottomSummary.textContent = `Showing ${startRow.toLocaleString()} – ${endRow.toLocaleString()} of ${totalFiltered.toLocaleString()} rows`;
+
+    const bottomBadge = document.getElementById('pagination-bottom-page-badge');
+    if (bottomBadge) bottomBadge.textContent = `Page ${currentPage} / ${totalPages}`;
+
+    const totalLabel = document.getElementById('page-total-label');
+    if (totalLabel) totalLabel.textContent = `of ${totalPages}`;
+
+    // Update Dropdown options
+    const pageSelect = document.getElementById('select-current-page');
+    if (pageSelect) {
+        let optionsHtml = '';
+        for (let p = 1; p <= totalPages; p++) {
+            const pStart = (p - 1) * pageSize + 1;
+            const pEnd   = Math.min(totalFiltered, p * pageSize);
+            optionsHtml += `<option value="${p}" ${p === currentPage ? 'selected' : ''}>Page ${p} (${pStart.toLocaleString()} – ${pEnd.toLocaleString()})</option>`;
+        }
+        pageSelect.innerHTML = optionsHtml;
+    }
+
+    // Update First/Prev/Next/Last disabled state
+    const isFirst = (currentPage <= 1);
+    const isLast  = (currentPage >= totalPages);
+
+    const btnFirst = document.getElementById('btn-page-first');
+    const btnPrev  = document.getElementById('btn-page-prev');
+    const btnNext  = document.getElementById('btn-page-next');
+    const btnLast  = document.getElementById('btn-page-last');
+
+    [btnFirst, btnPrev].forEach(b => {
+        if (b) {
+            b.disabled = isFirst;
+            b.style.opacity = isFirst ? '0.45' : '1';
+            b.style.cursor = isFirst ? 'not-allowed' : 'pointer';
+        }
+    });
+
+    [btnNext, btnLast].forEach(b => {
+        if (b) {
+            b.disabled = isLast;
+            b.style.opacity = isLast ? '0.45' : '1';
+            b.style.cursor = isLast ? 'not-allowed' : 'pointer';
+        }
+    });
 }
 
 /* ─── Cell Delegation & Excel Keyboard Shortcuts ──────────── */
@@ -494,7 +665,7 @@ function setupKeyboardShortcuts() {
 
 function pushStateToHistory() {
     undoStack.push(JSON.parse(JSON.stringify(gridRows)));
-    if (undoStack.length > 30) undoStack.shift();
+    if (undoStack.length > 20) undoStack.shift();
     redoStack = [];
 }
 
@@ -668,19 +839,38 @@ function closeOfficerPopover() {
 function jumpToCell(rowIdx, field) {
     closeOfficerPopover();
 
-    const tableWrap = document.getElementById('table-scroll-wrap');
-    const cell = document.querySelector(`td[data-row="${rowIdx}"][data-field="${field}"]`);
-    
-    if (cell && tableWrap) {
-        cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    // Determine if this row is currently filtered out
+    const filterItemIdx = filteredRowIndices.indexOf(rowIdx);
+    if (filterItemIdx === -1) {
+        setCardFilter('all');
+    }
 
-        cell.classList.remove('jump-highlight');
-        void cell.offsetWidth;
-        cell.classList.add('jump-highlight');
+    // Calculate target page
+    const newFilterIdx = filteredRowIndices.indexOf(rowIdx);
+    if (newFilterIdx !== -1) {
+        const targetPage = Math.floor(newFilterIdx / pageSize) + 1;
+        if (currentPage !== targetPage) {
+            goToPage(targetPage);
+        }
 
-        setTimeout(() => {
-            cell.classList.remove('jump-highlight');
-        }, 2500);
+        // Scroll within the page
+        const rowInPage = newFilterIdx % pageSize;
+        const tableWrap = document.getElementById('table-scroll-wrap');
+        if (tableWrap) {
+            tableWrap.scrollTop = Math.max(0, (rowInPage * ROW_HEIGHT) - 160);
+            renderVirtualRows(true);
+
+            setTimeout(() => {
+                const cell = document.querySelector(`td[data-row="${rowIdx}"][data-field="${field}"]`);
+                if (cell) {
+                    cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                    cell.classList.remove('jump-highlight');
+                    void cell.offsetWidth;
+                    cell.classList.add('jump-highlight');
+                    setTimeout(() => { cell.classList.remove('jump-highlight'); }, 2500);
+                }
+            }, 100);
+        }
     }
 }
 
@@ -718,9 +908,9 @@ function openDuplicateInspectorModal() {
                     <span><i class="fa-solid fa-copy"></i>&nbsp; In-File Sheet Conflicts &nbsp;<span style="background:#4338ca;color:#fff;border-radius:99px;padding:1px 9px;">${inFileDups.length}</span></span>
                     <span style="font-size:.72rem; font-weight:600; opacity:.8;">All 6 key fields are identical within this uploaded sheet</span>
                 </div>
-                <div style="overflow-x:auto; border-radius:9px; border:1.5px solid #c7d2fe;">
+                <div style="overflow-x:auto; border-radius:9px; border:1.5px solid #c7d2fe; max-height:350px;">
                     <table style="width:100%; border-collapse:collapse; font-size:.8rem;">
-                        <thead>
+                        <thead style="position:sticky; top:0; z-index:5;">
                             <tr>
                                 <th style="${thStyle} text-align:center; width:50px;">Row #</th>
                                 <th style="${thStyle} text-align:center; width:80px;">Matches</th>
@@ -766,11 +956,11 @@ function openDuplicateInspectorModal() {
             <div>
                 <div style="font-size:.85rem; font-weight:800; color:#991b1b; background:#fee2e2; padding:.5rem .9rem; border-radius:8px; margin-bottom:.8rem; display:flex; align-items:center; justify-content:space-between;">
                     <span><i class="fa-solid fa-database"></i>&nbsp; Historical Database Matches &nbsp;<span style="background:#dc2626;color:#fff;border-radius:99px;padding:1px 9px;">${dbDups.length}</span></span>
-                    <span style="font-size:.72rem; font-weight:600; opacity:.8;">All 6 key fields match records already in MySQL</span>
+                    <span style="font-size:.72rem; font-weight:600; opacity:.8;">All 6 key fields match historical records in the MySQL database</span>
                 </div>
-                <div style="overflow-x:auto; border-radius:9px; border:1.5px solid #fca5a5;">
+                <div style="overflow-x:auto; border-radius:9px; border:1.5px solid #fca5a5; max-height:350px;">
                     <table style="width:100%; border-collapse:collapse; font-size:.8rem;">
-                        <thead>
+                        <thead style="position:sticky; top:0; z-index:5;">
                             <tr>
                                 <th style="${thStyleRed} text-align:center; width:60px;">Sheet Row</th>
                                 <th style="${thStyleRed} text-align:center; width:65px;">DB Record</th>
@@ -843,16 +1033,16 @@ async function sendHeartbeat() {
     } catch (e) {}
 }
 
-/* ─── Live Sync ────────────────────────────────────────── */
+/* ─── Lightweight Live Sync (Does NOT transfer megabytes) ─ */
 function startLiveSync() {
     clearInterval(pollTimer);
     pollTimer = setInterval(async () => {
         if (!currentDraftId || isValidating) return;
         try {
-            const res  = await fetch(`ajax/sandbox_draft_api.php?action=get&draft_id=${currentDraftId}`);
+            const res  = await fetch(`ajax/sandbox_draft_api.php?action=poll_sync&draft_id=${currentDraftId}`);
             const data = await res.json();
 
-            // Real-Time Auto Close when file is submitted & locked by another officer!
+            // Real-Time Auto Close when file is submitted & locked by another officer
             if (data.status === 'closed' || (data.status === 'error' && data.message && data.message.includes('not found'))) {
                 clearInterval(pollTimer);
                 clearInterval(heartbeatTimer);
@@ -866,16 +1056,21 @@ function startLiveSync() {
             renderPresenceOverlay(activePresence);
             renderViewerBar(data.viewers || activeViewers);
 
+            // Only fetch full rows if another user saved changes
             if (data.updated_ts && data.updated_ts !== lastSyncTs) {
                 lastSyncTs = data.updated_ts;
-                if (JSON.stringify(data.rows) !== JSON.stringify(gridRows)) {
-                    gridRows = cleanRawRows(data.rows);
-                    validateGrid();
-                    document.getElementById('workspace-meta').textContent = `Live Editing · Last update by ${data.last_edited_by}`;
+                if (data.last_edited_by && data.last_edited_by !== data.current_user) {
+                    const fullRes  = await fetch(`ajax/sandbox_draft_api.php?action=get&draft_id=${currentDraftId}`);
+                    const fullData = await fullRes.json();
+                    if (fullData.status === 'success') {
+                        gridRows = cleanRawRows(fullData.rows || []);
+                        validateGrid();
+                        document.getElementById('workspace-meta').textContent = `Live Editing · Last update by ${data.last_edited_by}`;
+                    }
                 }
             }
         } catch (e) {}
-    }, 1500);
+    }, 3500);
 }
 
 let isClosedModalActive = false;
@@ -887,7 +1082,6 @@ function showDraftClosedModal(submittedBy) {
     clearInterval(pollTimer);
     clearInterval(heartbeatTimer);
 
-    // If the success modal for the uploader is open, do not disrupt it
     const successModal = document.getElementById('commit-success-modal');
     if (successModal && successModal.style.display === 'flex') return;
 
@@ -938,23 +1132,49 @@ function showDraftClosedModal(submittedBy) {
     }, 1000);
 }
 
-/* ─── Validation ───────────────────────────────────────── */
+/* ─── High-Performance Server Validation ──────────────────── */
 async function validateGrid() {
+    if (isValidating) return;
+    isValidating = true;
     const ind = document.getElementById('grid-status');
-    if (ind) ind.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Validating…';
-    try {
-        const res  = await fetch('ajax/pre_submission_validator.php', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ rows: gridRows })
-        });
-        const data = await res.json();
-        if (data.status !== 'success') throw new Error(data.message);
-        
-        latestDuplicateDetails = data.duplicate_details || [];
-        latestValidatedRows    = data.rows || [];
+    if (ind) ind.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Checking duplicates in DB…';
 
-        renderGridTable(latestValidatedRows);
+    try {
+        const payload = { draft_id: currentDraftId };
+        if (gridRows.length <= 1500) {
+            payload.rows = gridRows;
+        }
+
+        const res = await fetch('ajax/pre_submission_validator.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (data.status !== 'success') throw new Error(data.message || 'Validation error');
+
+        latestDuplicateDetails = data.duplicate_details || [];
+
+        // Merge compact row_issues into gridRows in memory
+        const issues = data.row_issues || {};
+        for (let i = 0; i < gridRows.length; i++) {
+            const iss = issues[i];
+            if (iss) {
+                gridRows[i].errors       = iss.errors || {};
+                gridRows[i].warnings     = iss.warnings || {};
+                gridRows[i].has_critical = Object.keys(gridRows[i].errors).length > 0;
+                gridRows[i].is_clean     = !gridRows[i].has_critical && Object.keys(gridRows[i].warnings).length === 0;
+            } else {
+                gridRows[i].errors       = {};
+                gridRows[i].warnings     = {};
+                gridRows[i].has_critical = false;
+                gridRows[i].is_clean     = true;
+            }
+        }
+
         updateSummaryCards(data.summary);
+        renderGridTable();
         renderPresenceOverlay(activePresence);
     } catch (err) {
         console.error('validateGrid error:', err);
@@ -964,44 +1184,97 @@ async function validateGrid() {
     }
 }
 
-/* ─── Grid render ──────────────────────────────────────── */
-function renderGridTable(rows) {
-    const tbody = document.getElementById('spreadsheet-tbody');
-    if (!rows || !rows.length) {
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:2rem;color:var(--text-muted);">No records.</td></tr>';
-        return;
-    }
+/* ─── Grid Filter Computation ────────────────────────────── */
+function computeFilteredIndices() {
+    filteredRowIndices = [];
+    const total = gridRows.length;
 
-    let filtered = rows;
-    if (currentCardFilter === 'clean') {
-        filtered = rows.filter(r => r.is_clean);
-    } else if (currentCardFilter === 'critical') {
-        filtered = rows.filter(r => r.errors && Object.keys(r.errors).length > 0);
-    } else if (currentCardFilter === 'warnings') {
-        filtered = rows.filter(r => r.warnings && Object.keys(r.warnings).length > 0);
-    } else if (currentCardFilter === 'duplicates') {
-        filtered = rows.filter(r => {
-            const rowNum = r.row_num || (rows.indexOf(r) + 1);
+    for (let i = 0; i < total; i++) {
+        const r = gridRows[i];
+        if (currentCardFilter === 'clean') {
+            if (r.is_clean) filteredRowIndices.push(i);
+        } else if (currentCardFilter === 'critical') {
+            if (r.has_critical) filteredRowIndices.push(i);
+        } else if (currentCardFilter === 'warnings') {
+            if (r.warnings && Object.keys(r.warnings).length > 0) filteredRowIndices.push(i);
+        } else if (currentCardFilter === 'duplicates') {
+            const rowNum = i + 1;
             const hasDupErr = r.errors && r.errors.account_number && r.errors.account_number.toLowerCase().includes('duplicate');
             const inDetails = latestDuplicateDetails.some(d => d.row_num === rowNum || (d.type === 'in_file' && d.matched_with_row === rowNum));
-            return hasDupErr || inDetails;
-        });
+            if (hasDupErr || inDetails) filteredRowIndices.push(i);
+        } else {
+            filteredRowIndices.push(i);
+        }
     }
+}
 
-    if (!filtered.length) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;color:#64748b;">No rows matching the filter "${currentCardFilter}".</td></tr>`;
+/* ─── Grid Render Coordinator ───────────────────────────── */
+function renderGridTable() {
+    computeFilteredIndices();
+    updatePaginationUI();
+    renderVirtualRows(true);
+}
+
+function handleTableScroll() {
+    repositionOverlay();
+    if (!scrollTicking) {
+        requestAnimationFrame(() => {
+            renderVirtualRows(false);
+            scrollTicking = false;
+        });
+        scrollTicking = true;
+    }
+}
+
+/* ─── High-Performance Virtual Window Rendering ─────────── */
+function renderVirtualRows(forceReset = false) {
+    const tbody = document.getElementById('spreadsheet-tbody');
+    const tableWrap = document.getElementById('table-scroll-wrap');
+    if (!tbody || !tableWrap) return;
+
+    const totalFiltered = filteredRowIndices.length;
+    if (totalFiltered === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2.5rem;color:#64748b;font-weight:600;">No records found matching filter "${currentCardFilter}".</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = filtered.map((r, idx) => {
-        const origIdx = rows.indexOf(r);
+    // Get the slice of rows assigned to the current page
+    const pageStartIndex = (currentPage - 1) * pageSize;
+    const pageEndIndex   = Math.min(totalFiltered, pageStartIndex + pageSize);
+    const pageRowCount   = pageEndIndex - pageStartIndex;
+
+    const scrollTop      = tableWrap.scrollTop;
+    const viewportHeight = tableWrap.clientHeight || 560;
+
+    const visibleCount   = Math.ceil(viewportHeight / ROW_HEIGHT) + (BUFFER_ROWS * 2);
+    const startInPage    = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_ROWS);
+    const endInPage      = Math.min(pageRowCount, startInPage + visibleCount);
+
+    const topSpacerHeight    = startInPage * ROW_HEIGHT;
+    const bottomSpacerHeight = Math.max(0, (pageRowCount - endInPage) * ROW_HEIGHT);
+
+    let html = '';
+
+    // Top virtual spacer
+    if (topSpacerHeight > 0) {
+        html += `<tr style="height:${topSpacerHeight}px;"><td colspan="9" style="padding:0;border:none;background:transparent;"></td></tr>`;
+    }
+
+    // Render viewport visible rows
+    for (let pIdx = startInPage; pIdx < endInPage; pIdx++) {
+        const globalRowIdx = filteredRowIndices[pageStartIndex + pIdx];
+        const r = gridRows[globalRowIdx];
+        if (!r) continue;
+
+        const rowNum = globalRowIdx + 1;
         const err  = r.errors   || {};
         const warn = r.warnings || {};
+
         const cst  = f => err[f]  ? 'background:#fef2f2; color:#991b1b; font-weight:700; border:1.5px solid #ef4444;' :
                           warn[f] ? 'background:#fffbeb; color:#92400e; border:1.5px solid #f59e0b;' : '';
         const ct   = f => err[f]  ? `🚫 Error: ${err[f]}` :
                           warn[f] ? `⚠️ Warning: ${warn[f]}` : 'Click to edit cell';
-        
+
         const cellVal = (f, val) => {
             if (val !== undefined && val !== null && String(val).trim() !== '') {
                 return escHtml(val);
@@ -1012,12 +1285,12 @@ function renderGridTable(rows) {
             return '';
         };
 
-        const rowNum = r.row_num || (origIdx + 1);
         const dupDetail = latestDuplicateDetails.find(d => d.row_num === rowNum || (d.type === 'in_file' && d.matched_with_row === rowNum));
         const isDup = !!dupDetail || (err.account_number && err.account_number.toLowerCase().includes('duplicate'));
+        const isDrawerOpen = expandedDrawers.has(globalRowIdx);
 
         let drawerHtml = '';
-        if (isDup) {
+        if (isDup && isDrawerOpen) {
             const isDb = dupDetail && dupDetail.type === 'database';
             const matchedLabel = isDb 
                 ? `<span style="background:#dc2626; color:#fff; font-size:.68rem; font-weight:800; padding:2px 7px; border-radius:5px;"><i class="fa-solid fa-database"></i> Original MySQL DB Record #${dupDetail.db_id}</span>`
@@ -1033,7 +1306,7 @@ function renderGridTable(rows) {
             const dbCreated = dupDetail ? (dupDetail.created_at || 'Previously Uploaded') : 'In-File Match';
 
             drawerHtml = `
-            <tr id="dup-drawer-${origIdx}" style="display:none; background:#fff1f2;">
+            <tr style="background:#fff1f2;">
                 <td colspan="9" style="padding:.65rem .85rem; border-bottom:2px solid #fca5a5;">
                     <div style="background:#fff; border:1px solid #fca5a5; border-radius:9px; padding:.65rem .85rem; box-shadow:0 2px 8px rgba(220,38,38,0.08);">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; padding-bottom:.35rem; border-bottom:1px dashed #fca5a5;">
@@ -1080,46 +1353,45 @@ function renderGridTable(rows) {
             </tr>`;
         }
 
-        return `
-        <tr id="gr-${origIdx}" style="${r.has_critical ? 'background:#fff5f5;' : idx%2===0?'':'background:#f8fafc;'}">
+        html += `
+        <tr id="gr-${globalRowIdx}" style="${r.has_critical ? 'background:#fff5f5;' : pIdx%2===0?'':'background:#f8fafc;'}">
             <td style="padding:.45rem .4rem;text-align:center;font-weight:700;color:#94a3b8;font-size:.75rem;border-right:1px solid #f1f5f9;white-space:nowrap;">
                 ${rowNum}
                 ${isDup ? `
-                    <button onclick="toggleDuplicateDrawer(${origIdx})" class="btn-reset" style="margin-left:4px; padding:1px 5px; font-size:.7rem; color:#dc2626; border:1px solid #fca5a5; background:#fff; border-radius:4px; cursor:pointer; vertical-align:middle;" title="Click to show/hide original database match">
-                        <i class="fa-solid fa-chevron-down" id="dup-arrow-${origIdx}"></i>
+                    <button onclick="toggleDuplicateDrawer(${globalRowIdx})" class="btn-reset" style="margin-left:4px; padding:1px 5px; font-size:.7rem; color:#dc2626; border:1px solid #fca5a5; background:#fff; border-radius:4px; cursor:pointer; vertical-align:middle;" title="Click to show/hide original database match">
+                        <i class="fa-solid ${isDrawerOpen ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>
                     </button>
                 ` : ''}
             </td>
-            <td contenteditable="true" data-row="${origIdx}" data-field="owner_name"       onblur="updateCell(${origIdx},'owner_name',this.innerText)"       style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('owner_name')}"       title="${ct('owner_name')}">${cellVal('owner_name', r.owner_name)}</td>
-            <td contenteditable="true" data-row="${origIdx}" data-field="id_passport_no"   onblur="updateCell(${origIdx},'id_passport_no',this.innerText)"   style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('id_passport_no')}"   title="${ct('id_passport_no')}">${cellVal('id_passport_no', r.id_passport_no)}</td>
-            <td contenteditable="true" data-row="${origIdx}" data-field="date_of_birth"    onblur="updateCell(${origIdx},'date_of_birth',this.innerText)"    style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('date_of_birth')}"    title="${ct('date_of_birth')}">${cellVal('date_of_birth', r.date_of_birth)}</td>
-            <td contenteditable="true" data-row="${origIdx}" data-field="account_number"   onblur="updateCell(${origIdx},'account_number',this.innerText)"   style="padding:.45rem .65rem;font-weight:600;border-right:1px solid #f1f5f9;${cst('account_number')}"   title="${ct('account_number')}">${cellVal('account_number', r.account_number)}</td>
-            <td contenteditable="true" data-row="${origIdx}" data-field="last_transaction" onblur="updateCell(${origIdx},'last_transaction',this.innerText)" style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('last_transaction')}" title="${ct('last_transaction')}">${cellVal('last_transaction', r.last_transaction)}</td>
-            <td contenteditable="true" data-row="${origIdx}" data-field="due_amount"       onblur="updateCell(${origIdx},'due_amount',this.innerText)"       style="padding:.45rem .65rem;text-align:right;font-weight:600;border-right:1px solid #f1f5f9;${cst('due_amount')}"       title="${ct('due_amount')}">${cellVal('due_amount', r.due_amount)}</td>
-            <td contenteditable="true" data-row="${origIdx}" data-field="compilation_date" onblur="updateCell(${origIdx},'compilation_date',this.innerText)" style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('compilation_date')}" title="${ct('compilation_date')}">${cellVal('compilation_date', r.compilation_date)}</td>
+            <td contenteditable="true" data-row="${globalRowIdx}" data-field="owner_name"       onblur="updateCell(${globalRowIdx},'owner_name',this.innerText)"       style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('owner_name')}"       title="${ct('owner_name')}">${cellVal('owner_name', r.owner_name)}</td>
+            <td contenteditable="true" data-row="${globalRowIdx}" data-field="id_passport_no"   onblur="updateCell(${globalRowIdx},'id_passport_no',this.innerText)"   style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('id_passport_no')}"   title="${ct('id_passport_no')}">${cellVal('id_passport_no', r.id_passport_no)}</td>
+            <td contenteditable="true" data-row="${globalRowIdx}" data-field="date_of_birth"    onblur="updateCell(${globalRowIdx},'date_of_birth',this.innerText)"    style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('date_of_birth')}"    title="${ct('date_of_birth')}">${cellVal('date_of_birth', r.date_of_birth)}</td>
+            <td contenteditable="true" data-row="${globalRowIdx}" data-field="account_number"   onblur="updateCell(${globalRowIdx},'account_number',this.innerText)"   style="padding:.45rem .65rem;font-weight:600;border-right:1px solid #f1f5f9;${cst('account_number')}"   title="${ct('account_number')}">${cellVal('account_number', r.account_number)}</td>
+            <td contenteditable="true" data-row="${globalRowIdx}" data-field="last_transaction" onblur="updateCell(${globalRowIdx},'last_transaction',this.innerText)" style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('last_transaction')}" title="${ct('last_transaction')}">${cellVal('last_transaction', r.last_transaction)}</td>
+            <td contenteditable="true" data-row="${globalRowIdx}" data-field="due_amount"       onblur="updateCell(${globalRowIdx},'due_amount',this.innerText)"       style="padding:.45rem .65rem;text-align:right;font-weight:600;border-right:1px solid #f1f5f9;${cst('due_amount')}"       title="${ct('due_amount')}">${cellVal('due_amount', r.due_amount)}</td>
+            <td contenteditable="true" data-row="${globalRowIdx}" data-field="compilation_date" onblur="updateCell(${globalRowIdx},'compilation_date',this.innerText)" style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('compilation_date')}" title="${ct('compilation_date')}">${cellVal('compilation_date', r.compilation_date)}</td>
             <td style="padding:.45rem;text-align:center;">
-                <button onclick="removeGridRow(${origIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;"><i class="fa-solid fa-trash-can"></i></button>
+                <button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;"><i class="fa-solid fa-trash-can"></i></button>
             </td>
         </tr>
         ${drawerHtml}`;
-    }).join('');
+    }
+
+    // Bottom virtual spacer
+    if (bottomSpacerHeight > 0) {
+        html += `<tr style="height:${bottomSpacerHeight}px;"><td colspan="9" style="padding:0;border:none;background:transparent;"></td></tr>`;
+    }
+
+    tbody.innerHTML = html;
 }
 
 function toggleDuplicateDrawer(origIdx) {
-    const drawer = document.getElementById(`dup-drawer-${origIdx}`);
-    const arrow  = document.getElementById(`dup-arrow-${origIdx}`);
-    if (!drawer) return;
-    if (drawer.style.display === 'none' || !drawer.style.display) {
-        drawer.style.display = 'table-row';
-        if (arrow) {
-            arrow.className = 'fa-solid fa-chevron-up';
-        }
+    if (expandedDrawers.has(origIdx)) {
+        expandedDrawers.delete(origIdx);
     } else {
-        drawer.style.display = 'none';
-        if (arrow) {
-            arrow.className = 'fa-solid fa-chevron-down';
-        }
+        expandedDrawers.add(origIdx);
     }
+    renderVirtualRows(true);
 }
 
 /* ─── Cell update ──────────────────────────────────────── */
@@ -1132,6 +1404,7 @@ async function updateCell(rowIdx, field, val) {
 
     gridRows[rowIdx][field] = clean;
     validateGrid();
+
     if (currentDraftId) {
         await fetch('ajax/sandbox_draft_api.php?action=patch_cell', {
             method:'POST', headers:{'Content-Type':'application/json'},
@@ -1152,9 +1425,11 @@ function autoFixAllCompilationDates() {
     let n = 0;
     pushStateToHistory();
     gridRows.forEach(r => { const p = flexDate(r.compilation_date); if (p && p !== r.compilation_date) { r.compilation_date = p; n++; } });
-    validateGrid(); saveInitialDraft();
-    alert(`Fixed ${n} compilation date(s) to YYYY-MM-DD.`);
+    validateGrid();
+    saveInitialDraft();
+    alert(`Fixed ${n.toLocaleString()} compilation date(s) to YYYY-MM-DD.`);
 }
+
 function flexDate(s) {
     if (!s) return '';
     s = String(s).trim();
@@ -1188,13 +1463,13 @@ async function saveInitialDraft() {
 
 /* ─── Summary cards ────────────────────────────────────── */
 function updateSummaryCards(s) {
-    document.getElementById('summary-total').textContent      = s.total;
-    document.getElementById('summary-clean').textContent      = s.clean;
-    document.getElementById('summary-critical').textContent   = s.critical;
-    document.getElementById('summary-warnings').textContent   = s.warnings;
+    document.getElementById('summary-total').textContent      = (s.total || 0).toLocaleString();
+    document.getElementById('summary-clean').textContent      = (s.clean || 0).toLocaleString();
+    document.getElementById('summary-critical').textContent   = (s.critical || 0).toLocaleString();
+    document.getElementById('summary-warnings').textContent   = (s.warnings || 0).toLocaleString();
     
     const dups = (s.in_file_duplicates||0) + (s.db_duplicates||0);
-    document.getElementById('summary-duplicates').textContent = dups;
+    document.getElementById('summary-duplicates').textContent = dups.toLocaleString();
 
     const btn  = document.getElementById('btn-submit-locked');
     const icon = document.getElementById('btn-submit-icon');
@@ -1206,7 +1481,7 @@ function updateSummaryCards(s) {
     btn.style.background = ok ? '#16a34a' : '';
     btn.style.color      = ok ? '#fff' : '';
     icon.className       = ok ? 'fa-solid fa-cloud-arrow-up' : 'fa-solid fa-lock';
-    lbl.textContent      = ok ? 'Upload & Lock File' : `Locked — Fix ${s.critical} Error(s)`;
+    lbl.textContent      = ok ? 'Upload & Lock File' : `Locked — Fix ${s.critical.toLocaleString()} Error(s)`;
 }
 
 /* ─── Export ───────────────────────────────────────────── */
@@ -1227,14 +1502,14 @@ async function commitSanitizedUpload() {
 
     const btn = document.getElementById('btn-submit-locked');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving to database…';
     try {
         const res  = await fetch('ajax/commit_pre_submission.php', {
             method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ rows: gridRows, draft_id: currentDraftId })
+            body: JSON.stringify({ draft_id: currentDraftId })
         });
         const data = await res.json();
-        if (data.status !== 'success') throw new Error(data.message);
+        if (data.status !== 'success') throw new Error(data.message || 'Submission failed');
 
         document.getElementById('success-modal-msg').textContent    = data.message;
         document.getElementById('btn-modal-download').href          = data.file_url;

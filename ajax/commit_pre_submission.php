@@ -3,6 +3,9 @@ ob_start();
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 ini_set('display_errors', '0');
 
+ini_set('memory_limit', '1024M');
+set_time_limit(600);
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/SimpleXLSXGen.php';
 
@@ -19,16 +22,37 @@ if (!$pdo) {
 
 // Get JSON input
 $rawInput = file_get_contents('php://input');
-$data = json_decode($rawInput, true);
+$data = json_decode($rawInput, true) ?: [];
 
-if (!isset($data['rows']) || !is_array($data['rows']) || empty($data['rows'])) {
-    http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => 'No clean rows provided for submission.']);
-    exit;
+$draftId = (int)($data['draft_id'] ?? $_POST['draft_id'] ?? 0);
+$rows = [];
+
+if (isset($data['rows']) && is_array($data['rows']) && !empty($data['rows'])) {
+    $rows = $data['rows'];
+} elseif ($draftId > 0) {
+    // Load directly from disk or database to prevent large HTTP payloads
+    $diskPath = __DIR__ . '/../uploads/drafts/draft_' . $draftId . '.json';
+    if (file_exists($diskPath)) {
+        $content = @file_get_contents($diskPath);
+        if ($content !== false && $content !== '') {
+            $rows = json_decode($content, true) ?: [];
+        }
+    }
+    if (empty($rows)) {
+        $stmtDraftRows = $pdo->prepare("SELECT `rows_data` FROM `sandbox_drafts` WHERE `id` = ?");
+        $stmtDraftRows->execute([$draftId]);
+        $draftRecord = $stmtDraftRows->fetch(PDO::FETCH_ASSOC);
+        if ($draftRecord) {
+            $rows = json_decode($draftRecord['rows_data'] ?? '[]', true) ?: [];
+        }
+    }
 }
 
-$rows = $data['rows'];
-$draftId = (int)($data['draft_id'] ?? $_POST['draft_id'] ?? 0);
+if (empty($rows)) {
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => 'No clean rows found for submission.']);
+    exit;
+}
 $uploadedBy = $_SESSION['admin_user']['username'] ?? $_SESSION['username'] ?? 'Compliance Officer';
 $userRole   = $_SESSION['admin_user']['role'] ?? $_SESSION['role'] ?? 'officer';
 
@@ -73,6 +97,15 @@ try {
         $dueAmount   = trim((string)($row['due_amount'] ?? ''));
         $compilation = trim((string)($row['compilation_date'] ?? ''));
 
+        // Normalize date of birth to YYYY-MM-DD (or NULL) to support hosted DATE column
+        $formattedDob = null;
+        if ($dob !== '') {
+            $parsedDob = date_create($dob);
+            if ($parsedDob) {
+                $formattedDob = date_format($parsedDob, 'Y-m-d');
+            }
+        }
+
         // Normalize compilation date to YYYY-MM-DD
         $formattedDate = null;
         if ($compilation !== '') {
@@ -85,7 +118,7 @@ try {
         $batchValues[] = "(?, ?, ?, ?, ?, ?, ?, 'Unclaimed', 'No', NOW())";
         $batchParams[] = $ownerName !== '' ? $ownerName : null;
         $batchParams[] = $idPassport !== '' ? $idPassport : null;
-        $batchParams[] = $dob !== '' ? $dob : null;
+        $batchParams[] = $formattedDob;
         $batchParams[] = $accountNo !== '' ? $accountNo : null;
         $batchParams[] = $lastTx !== '' ? $lastTx : null;
         $batchParams[] = $dueAmount !== '' ? $dueAmount : null;

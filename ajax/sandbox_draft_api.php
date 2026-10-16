@@ -1,12 +1,16 @@
 <?php
 /**
  * UFAA – Sandbox Collaborative Drafts, Live Sync & Presence API
- * Compatible with PHP 7.0+ (standard function syntax).
+ * Optimized for multi-million and large-scale (up to 500k rows) datasets.
+ * Features chunked draft saving, file-backed disk caching to prevent MySQL
+ * max_allowed_packet errors, lightweight polling, and fast cell patching.
  */
 
 ob_start();
 error_reporting(E_ALL & ~E_NOTICE & ~E_WARNING);
 ini_set('display_errors', '0');
+ini_set('memory_limit', '1024M');
+set_time_limit(300);
 
 require_once __DIR__ . '/../config.php';
 
@@ -51,6 +55,36 @@ try {
         try { $pdo->exec("ALTER TABLE `sandbox_drafts` ADD COLUMN `flagged_reason` TEXT NULL AFTER `status`"); } catch (Exception $_e) {}
     }
 } catch (Exception $_ex) { /* silent */ }
+
+// Helper for file storage directory
+$draftsDir = __DIR__ . '/../uploads/drafts';
+if (!is_dir($draftsDir)) {
+    @mkdir($draftsDir, 0777, true);
+}
+
+function getDraftJsonPath(int $draftId): string {
+    global $draftsDir;
+    return $draftsDir . '/draft_' . $draftId . '.json';
+}
+
+function storeDraftRowsOnDisk(int $draftId, array $rows): bool {
+    $path = getDraftJsonPath($draftId);
+    $json = json_encode($rows, JSON_UNESCAPED_UNICODE);
+    if ($json === false) return false;
+    return @file_put_contents($path, $json, LOCK_EX) !== false;
+}
+
+function fetchDraftRows(int $draftId, string $dbRowsData): array {
+    $path = getDraftJsonPath($draftId);
+    if (file_exists($path)) {
+        $content = @file_get_contents($path);
+        if ($content !== false && $content !== '') {
+            $arr = json_decode($content, true);
+            if (is_array($arr)) return $arr;
+        }
+    }
+    return json_decode($dbRowsData, true) ?: [];
+}
 
 $currentUser = $_SESSION['admin_user']['username'] ?? $_SESSION['username'] ?? 'Officer';
 $action      = $_GET['action'] ?? $_POST['action'] ?? 'list';
@@ -112,8 +146,19 @@ try {
                 return isset($p['ts']) && ($now - $p['ts'] < 10);
             }));
 
-            $rowsArr = json_decode($d['rows_data'] ?? '[]', true) ?: [];
-            $d['approx_rows'] = count($rowsArr);
+            // Fast row count estimation without decompressing huge JSON strings
+            $draftId = (int)$d['id'];
+            $diskPath = getDraftJsonPath($draftId);
+            if (file_exists($diskPath)) {
+                $fileContent = @file_get_contents($diskPath);
+                $rowsArr = json_decode($fileContent, true) ?: [];
+                $d['approx_rows'] = count($rowsArr);
+            } elseif (preg_match('/^\[file_stored:(\d+)\]/', (string)$d['rows_data'], $m)) {
+                $d['approx_rows'] = (int)$m[1];
+            } else {
+                $rowsArr = json_decode($d['rows_data'] ?? '[]', true) ?: [];
+                $d['approx_rows'] = count($rowsArr);
+            }
 
             unset($d['rows_data']);
             unset($d['viewer_data']);
@@ -127,6 +172,51 @@ try {
         exit;
     }
 
+    /* POLL_SYNC (Lightweight Real-time Status Polling) ─── */
+    if ($action === 'poll_sync') {
+        $draftId = (int)($_GET['draft_id'] ?? $data['draft_id'] ?? 0);
+        if (!$draftId) {
+            if (ob_get_length()) ob_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'message' => 'Missing draft_id']);
+            exit;
+        }
+
+        $stmt = $pdo->prepare("SELECT `id`, `status`, `created_by`, `last_edited_by`, `updated_at`, `flagged_reason`, `presence_data`, `viewer_data` FROM `sandbox_drafts` WHERE `id` = ?");
+        $stmt->execute([$draftId]);
+        $draft = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$draft || (isset($draft['status']) && !in_array($draft['status'], ['active', 'flagged']))) {
+            if (ob_get_length()) ob_clean();
+            header('Content-Type: application/json');
+            echo json_encode([
+                'status'       => 'closed',
+                'message'      => 'This working file has been submitted and locked by an officer.',
+                'submitted_by' => $draft['last_edited_by'] ?? 'another officer'
+            ]);
+            exit;
+        }
+
+        $presence = parsePresence(json_decode($draft['presence_data'] ?? '[]', true) ?: [], 10, $currentUser);
+        $viewers  = parsePresence(json_decode($draft['viewer_data']   ?? '[]', true) ?: [], 15, $currentUser);
+        $presence = array_values(array_filter($presence, function($p) { return empty($p['is_self']); }));
+
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode([
+            'status'         => 'success',
+            'draft_id'       => (int)$draft['id'],
+            'draft_status'   => $draft['status'],
+            'flagged_reason' => $draft['flagged_reason'] ?? '',
+            'last_edited_by' => $draft['last_edited_by'],
+            'updated_ts'     => strtotime($draft['updated_at']),
+            'presence'       => $presence,
+            'viewers'        => $viewers,
+            'current_user'   => $currentUser
+        ]);
+        exit;
+    }
+
     /* GET_LATEST ───────────────────────────────────────── */
     if ($action === 'get_latest') {
         $stmt  = $pdo->query("SELECT * FROM `sandbox_drafts` WHERE `status` = 'active' ORDER BY `updated_at` DESC LIMIT 1");
@@ -137,7 +227,7 @@ try {
 
         if (!$draft) { echo json_encode(['status' => 'none']); exit; }
 
-        $rows     = json_decode($draft['rows_data'], true)    ?: [];
+        $rows     = fetchDraftRows((int)$draft['id'], $draft['rows_data'] ?? '');
         $presence = parsePresence(json_decode($draft['presence_data'] ?? '[]', true) ?: [], 10, $currentUser);
         $viewers  = parsePresence(json_decode($draft['viewer_data']   ?? '[]', true) ?: [], 15, $currentUser);
 
@@ -256,7 +346,7 @@ try {
         exit;
     }
 
-    /* PATCH_CELL ───────────────────────────────────────── */
+    /* PATCH_CELL (Fast Single-Cell Update) ─────────────── */
     if ($action === 'patch_cell') {
         $draftId  = (int)($data['draft_id'] ?? 0);
         $rowIdx   = (int)($data['row_index'] ?? -1);
@@ -280,11 +370,14 @@ try {
             exit;
         }
 
-        $rows = json_decode($draft['rows_data'], true) ?: [];
+        $rows = fetchDraftRows($draftId, $draft['rows_data'] ?? '');
         if (isset($rows[$rowIdx])) {
             $rows[$rowIdx][$field] = $newValue;
-            $pdo->prepare("UPDATE `sandbox_drafts` SET `rows_data` = ?, `last_edited_by` = ?, `updated_at` = NOW() WHERE `id` = ?")
-                ->execute([json_encode($rows), $currentUser, $draftId]);
+            storeDraftRowsOnDisk($draftId, $rows);
+
+            // Update timestamp & last editor in DB
+            $pdo->prepare("UPDATE `sandbox_drafts` SET `last_edited_by` = ?, `updated_at` = NOW() WHERE `id` = ?")
+                ->execute([$currentUser, $draftId]);
         }
 
         if (ob_get_length()) ob_clean();
@@ -293,44 +386,133 @@ try {
         exit;
     }
 
+    /* SAVE_CHUNK (Safe Upload for Up to 500k Rows) ──────── */
+    if ($action === 'save_chunk') {
+        $draftId     = (int)($data['draft_id'] ?? 0);
+        $draftName   = trim((string)($data['draft_name'] ?? 'Working Draft'));
+        if ($draftName === '') $draftName = 'Working Draft';
+        $chunkIndex  = (int)($data['chunk_index'] ?? 0);
+        $totalChunks = (int)($data['total_chunks'] ?? 1);
+        $chunkRows   = (array)($data['rows'] ?? []);
+
+        if ($chunkIndex === 0 && $draftId === 0) {
+            $initialTag = '[file_stored:0]';
+            $stmt = $pdo->prepare("INSERT INTO `sandbox_drafts` (`draft_name`, `created_by`, `last_edited_by`, `rows_data`, `status`, `created_at`, `updated_at`) VALUES (?, ?, ?, ?, 'active', NOW(), NOW())");
+            $stmt->execute([$draftName, $currentUser, $currentUser, $initialTag]);
+            $draftId = (int)$pdo->lastInsertId();
+        }
+
+        if (!$draftId) {
+            throw new Exception("Unable to initialize draft session.");
+        }
+
+        $tmpFile = $draftsDir . '/tmp_draft_' . $draftId . '.jsonl';
+        if ($chunkIndex === 0 && file_exists($tmpFile)) {
+            @unlink($tmpFile);
+        }
+
+        // Append rows to temporary JSONL file
+        $fp = fopen($tmpFile, 'a');
+        if ($fp) {
+            foreach ($chunkRows as $r) {
+                fwrite($fp, json_encode($r, JSON_UNESCAPED_UNICODE) . "\n");
+            }
+            fclose($fp);
+        }
+
+        // On final chunk, convert JSONL to standard JSON array
+        if ($chunkIndex >= $totalChunks - 1) {
+            $allRows = [];
+            if (file_exists($tmpFile)) {
+                $lines = file($tmpFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    $item = json_decode($line, true);
+                    if ($item !== null) {
+                        $allRows[] = $item;
+                    }
+                }
+                @unlink($tmpFile);
+            }
+
+            storeDraftRowsOnDisk($draftId, $allRows);
+            $totalCount = count($allRows);
+            $dbTag = '[file_stored:' . $totalCount . ']';
+
+            $pdo->prepare("UPDATE `sandbox_drafts` SET `rows_data` = ?, `last_edited_by` = ?, `updated_at` = NOW() WHERE `id` = ?")
+                ->execute([$dbTag, $currentUser, $draftId]);
+
+            if (ob_get_length()) ob_clean();
+            header('Content-Type: application/json');
+            echo json_encode([
+                'status'     => 'success',
+                'draft_id'   => $draftId,
+                'draft_name' => $draftName,
+                'total_rows' => $totalCount,
+                'is_final'   => true
+            ]);
+            exit;
+        }
+
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode([
+            'status'      => 'chunk_saved',
+            'draft_id'    => $draftId,
+            'chunk_index' => $chunkIndex,
+            'is_final'    => false
+        ]);
+        exit;
+    }
+
     /* SAVE ─────────────────────────────────────────────── */
     if ($action === 'save') {
         $draftId   = (int)($data['draft_id'] ?? 0);
         $draftName = trim((string)($data['draft_name'] ?? 'Untitled Draft'));
         if ($draftName === '') $draftName = 'Working Draft';
-        $rowsData  = json_encode($data['rows'] ?? []);
-
-        if ($rowsData === false) {
-            if (ob_get_length()) ob_clean();
-            header('Content-Type: application/json');
-            echo json_encode(['status' => 'error', 'message' => 'Failed to encode rows data.']);
-            exit;
-        }
+        $rows      = (array)($data['rows'] ?? []);
+        $totalRows = count($rows);
 
         if ($draftId > 0) {
-            $stmt = $pdo->prepare("UPDATE `sandbox_drafts` SET `rows_data` = ?, `last_edited_by` = ?, `updated_at` = NOW() WHERE `id` = ? AND `status` = 'active'");
-            $stmt->execute([$rowsData, $currentUser, $draftId]);
+            $stmt = $pdo->prepare("UPDATE `sandbox_drafts` SET `draft_name` = ?, `last_edited_by` = ?, `updated_at` = NOW() WHERE `id` = ? AND `status` = 'active'");
+            $stmt->execute([$draftName, $currentUser, $draftId]);
             if ($stmt->rowCount() === 0) {
+                // If ID does not exist, insert fresh
                 $draftId = 0;
             }
         }
 
         if ($draftId === 0) {
+            $dbTag = '[file_stored:' . $totalRows . ']';
             $pdo->prepare("INSERT INTO `sandbox_drafts` (`draft_name`, `created_by`, `last_edited_by`, `rows_data`, `status`, `created_at`, `updated_at`) VALUES (?, ?, ?, ?, 'active', NOW(), NOW())")
-                ->execute([$draftName, $currentUser, $currentUser, $rowsData]);
+                ->execute([$draftName, $currentUser, $currentUser, $dbTag]);
             $draftId = (int)$pdo->lastInsertId();
         }
 
         if (!$draftId) {
             if (ob_get_length()) ob_clean();
             header('Content-Type: application/json');
-            echo json_encode(['status' => 'error', 'message' => 'Failed to save draft to database.']);
+            echo json_encode(['status' => 'error', 'message' => 'Failed to save draft session.']);
             exit;
         }
 
+        // Store rows on disk
+        storeDraftRowsOnDisk($draftId, $rows);
+
+        // Keep lightweight tag or inline if small (< 2MB)
+        $jsonStr = json_encode($rows, JSON_UNESCAPED_UNICODE);
+        $rowsDataForDb = (strlen($jsonStr) < 2000000) ? $jsonStr : ('[file_stored:' . $totalRows . ']');
+        $pdo->prepare("UPDATE `sandbox_drafts` SET `rows_data` = ?, `last_edited_by` = ?, `updated_at` = NOW() WHERE `id` = ?")
+            ->execute([$rowsDataForDb, $currentUser, $draftId]);
+
         if (ob_get_length()) ob_clean();
         header('Content-Type: application/json');
-        echo json_encode(['status' => 'success', 'draft_id' => $draftId, 'draft_name' => $draftName, 'updated_at' => date('d M Y, H:i')]);
+        echo json_encode([
+            'status'     => 'success',
+            'draft_id'   => $draftId,
+            'draft_name' => $draftName,
+            'total_rows' => $totalRows,
+            'updated_at' => date('d M Y, H:i')
+        ]);
         exit;
     }
 
@@ -358,17 +540,38 @@ try {
             exit;
         }
 
-        $rows     = json_decode($draft['rows_data'],    true) ?: [];
         $presence = parsePresence(json_decode($draft['presence_data'] ?? '[]', true) ?: [], 10, $currentUser);
         $viewers  = parsePresence(json_decode($draft['viewer_data']   ?? '[]', true) ?: [], 15, $currentUser);
+        $presence = array_values(array_filter($presence, function($p) { return empty($p['is_self']); }));
 
-        $presence = array_values(array_filter($presence, function($p) {
-            return empty($p['is_self']);
-        }));
+        $isOwner = ($draft['created_by'] === $currentUser || strtolower($_SESSION['admin_user']['role'] ?? $_SESSION['role'] ?? '') === 'admin');
+
+        // Check if caller only wants summary info
+        if (!empty($_GET['summary_only'])) {
+            if (ob_get_length()) ob_clean();
+            header('Content-Type: application/json');
+            echo json_encode([
+                'status'         => 'success',
+                'draft_id'       => (int)$draft['id'],
+                'draft_name'     => $draft['draft_name'],
+                'created_by'     => $draft['created_by'],
+                'is_owner'       => $isOwner,
+                'draft_status'   => $draft['status'],
+                'flagged_reason' => $draft['flagged_reason'] ?? '',
+                'last_edited_by' => $draft['last_edited_by'],
+                'updated_at'     => date('d M Y, H:i', strtotime($draft['updated_at'])),
+                'updated_ts'     => strtotime($draft['updated_at']),
+                'presence'       => $presence,
+                'viewers'        => $viewers,
+                'current_user'   => $currentUser,
+            ]);
+            exit;
+        }
+
+        $rows = fetchDraftRows((int)$draft['id'], $draft['rows_data'] ?? '');
 
         if (ob_get_length()) ob_clean();
         header('Content-Type: application/json');
-        $isOwner = ($draft['created_by'] === $currentUser || strtolower($_SESSION['admin_user']['role'] ?? $_SESSION['role'] ?? '') === 'admin');
         echo json_encode([
             'status'         => 'success',
             'draft_id'       => (int)$draft['id'],
@@ -381,6 +584,7 @@ try {
             'updated_at'     => date('d M Y, H:i', strtotime($draft['updated_at'])),
             'updated_ts'     => strtotime($draft['updated_at']),
             'rows'           => $rows,
+            'total_rows'     => count($rows),
             'presence'       => $presence,
             'viewers'        => $viewers,
             'current_user'   => $currentUser,
@@ -393,6 +597,10 @@ try {
         $draftId = (int)($_POST['draft_id'] ?? $data['draft_id'] ?? 0);
         if ($draftId) {
             $pdo->prepare("DELETE FROM `sandbox_drafts` WHERE `id` = ?")->execute([$draftId]);
+            $diskPath = getDraftJsonPath($draftId);
+            if (file_exists($diskPath)) {
+                @unlink($diskPath);
+            }
         }
         if (ob_get_length()) ob_clean();
         header('Content-Type: application/json');

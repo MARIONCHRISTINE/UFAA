@@ -251,8 +251,8 @@ require_once 'includes/layout.php';
                     <div style="width:68px; height:68px; background:#fef2f2; border:2px solid var(--airtel-red); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--airtel-red); font-size:1.8rem; margin-bottom:1rem;">
                         <i class="fa-solid fa-spinner fa-spin"></i>
                     </div>
-                    <p style="font-size:1.05rem; font-weight:800; color:var(--text-primary); margin-bottom:.2rem;">Processing ${escHtml(file.name)}…</p>
-                    <p style="font-size:.875rem; color:#64748b;">Creating working file &amp; launching Web-Excel Editor…</p>
+                    <p style="font-size:1.05rem; font-weight:800; color:var(--text-primary); margin-bottom:.2rem;">Reading ${escHtml(file.name)}…</p>
+                    <p id="upload-progress-text" style="font-size:.875rem; color:#64748b;">Parsing worksheet data rows…</p>
                 </div>`;
         }
 
@@ -275,7 +275,7 @@ require_once 'includes/layout.php';
                     compilation_date: colIdx(hdrs, ['compilation', 'compiled', 'date_compiled'])
                 };
 
-                const parsedRows = [];
+                let parsedRows = [];
                 for (let i = 1; i < raw.length; i++) {
                     const r = raw[i];
                     if (!r || r.every(c => String(c).trim() === '')) continue;
@@ -290,24 +290,57 @@ require_once 'includes/layout.php';
                     });
                 }
 
-                // Save new draft
-                const res = await fetch('ajax/sandbox_draft_api.php?action=save', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        draft_id: 0,
-                        draft_name: file.name,
-                        rows: parsedRows
-                    })
-                });
-                const data = await res.json();
-                if (data.status === 'success' && data.draft_id) {
-                    window.location.href = `data_sanitizer_editor.php?draft_id=${data.draft_id}`;
-                } else {
-                    throw new Error(data.message || 'Could not save draft.');
+                // Enforce 500,000 maximum row limit as requested
+                if (parsedRows.length > 500000) {
+                    alert(`The uploaded file contains ${parsedRows.length.toLocaleString()} rows. System is capped at 500,000 rows maximum. Limiting to the first 500,000 rows.`);
+                    parsedRows = parsedRows.slice(0, 500000);
+                }
+
+                const totalRows = parsedRows.length;
+                const CHUNK_SIZE = 15000;
+                const totalChunks = Math.ceil(totalRows / CHUNK_SIZE);
+                let draftId = 0;
+
+                const progressEl = document.getElementById('upload-progress-text');
+
+                for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+                    const start = chunkIdx * CHUNK_SIZE;
+                    const end = Math.min(totalRows, start + CHUNK_SIZE);
+                    const chunkRows = parsedRows.slice(start, end);
+
+                    if (progressEl) {
+                        const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100);
+                        progressEl.textContent = `Uploading chunk ${chunkIdx + 1} of ${totalChunks} (${end.toLocaleString()} / ${totalRows.toLocaleString()} rows · ${pct}%)…`;
+                    }
+
+                    const res = await fetch('ajax/sandbox_draft_api.php?action=save_chunk', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            draft_id: draftId,
+                            draft_name: file.name,
+                            chunk_index: chunkIdx,
+                            total_chunks: totalChunks,
+                            rows: chunkRows
+                        })
+                    });
+
+                    const data = await res.json();
+                    if (data.status !== 'chunk_saved' && data.status !== 'success') {
+                        throw new Error(data.message || 'Error saving upload chunk.');
+                    }
+
+                    draftId = data.draft_id;
+
+                    if (data.is_final) {
+                        if (progressEl) progressEl.textContent = 'Launching Web-Excel Editor…';
+                        window.location.href = `data_sanitizer_editor.php?draft_id=${draftId}`;
+                        return;
+                    }
                 }
             } catch (err) {
                 alert('File processing error: ' + err.message);
+                window.location.reload();
             }
         };
         reader.readAsArrayBuffer(file);
