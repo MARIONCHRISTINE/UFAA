@@ -1,7 +1,12 @@
--- Most critical: columns used in WHERE, ORDER BY, and filters
-ALTER TABLE `unclaimed_assets` ADD INDEX `idx_status`        (`status`);
-ALTER TABLE `unclaimed_assets` ADD INDEX `idx_id_number`     (`id_number`);
-ALTER TABLE `unclaimed_assets` ADD INDEX `idx_account_no`    (`account_no`);
-ALTER TABLE `unclaimed_assets` ADD INDEX `idx_owner_name`    (`owner_name`);
-ALTER TABLE `unclaimed_assets` ADD INDEX `idx_letter_gen`    (`letter_generated`);
-ALTER TABLE `unclaimed_assets` ADD INDEX `idx_status_letter` (`status`, `letter_generated`); -- composite
+-- 1. Fix sandbox_drafts status to allow 'flagged' for duplicate review workflows
+ALTER TABLE `sandbox_drafts` 
+  MODIFY COLUMN `status` VARCHAR(20) NOT NULL DEFAULT 'active';
+
+-- 2. Add performance indexes for letter generation & status checks on millions of records
+ALTER TABLE `unclaimed_assets` 
+  ADD INDEX `idx_letter_gen` (`letter_generated`),
+  ADD INDEX `idx_status_letter` (`status`, `letter_generated`, `letter_received`);
+
+ALTER TABLE `unclaimed_assets` 
+  MODIFY COLUMN `date_of_birth` VARCHAR(100) DEFAULT NULL;
+
