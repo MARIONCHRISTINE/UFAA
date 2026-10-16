@@ -509,11 +509,21 @@ if ($pdo) {
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 function colIdx(headers, keywords) {
-    for (let i = 0; i < headers.length; i++) {
-        const h = headers[i];
-        for (let j = 0; j < keywords.length; j++) {
-            if (h.includes(keywords[j])) return i;
-        }
+    // 1. Exact match
+    for (const k of keywords) {
+        const exact = headers.findIndex(h => h === k);
+        if (exact >= 0) return exact;
+    }
+    // 2. Word boundary match
+    for (const k of keywords) {
+        const found = headers.findIndex(h => {
+            if (k.length <= 2) {
+                const re = new RegExp('(^|[^a-z0-9])' + k + '([^a-z0-9]|$)', 'i');
+                return re.test(h);
+            }
+            return h.includes(k);
+        });
+        if (found >= 0) return found;
     }
     return -1;
 }
@@ -525,20 +535,20 @@ function loadExcelAndRedirect(event) {
     const reader = new FileReader();
     reader.onload = async e => {
         try {
-            const wb  = XLSX.read(new Uint8Array(e.target.result), { type:'array', cellDates:true });
+            const wb  = XLSX.read(new Uint8Array(e.target.result), { type:'array', cellDates:false });
             const ws  = wb.Sheets[wb.SheetNames[0]];
-            const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
+            const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
             if (!raw || raw.length < 2) { alert('No data rows found in uploaded file.'); return; }
 
             const hdrs = raw[0].map(h => String(h).trim().toLowerCase());
             const col  = {
-                owner_name:       colIdx(hdrs, ['owner', 'name', 'holder']),
-                id_passport_no:   colIdx(hdrs, ['passport', 'id_number', 'id_no', 'id']),
-                date_of_birth:    colIdx(hdrs, ['birth', 'dob']),
-                account_number:   colIdx(hdrs, ['account', 'acct', 'acc']),
-                last_transaction: colIdx(hdrs, ['transaction', 'last_tx', 'tx']),
-                due_amount:       colIdx(hdrs, ['amount', 'due', 'kes', 'balance', 'value']),
-                compilation_date: colIdx(hdrs, ['compilation', 'compiled', 'date_compiled'])
+                owner_name:       colIdx(hdrs, ['owner_name', 'holder_name', 'customer_name', 'full_name', 'owner', 'name', 'holder']),
+                id_passport_no:   colIdx(hdrs, ['passport', 'id_number', 'id_no', 'national_id', 'id_num', 'id']),
+                date_of_birth:    colIdx(hdrs, ['date_of_birth', 'birth_date', 'dob', 'birth']),
+                account_number:   colIdx(hdrs, ['account_number', 'account_no', 'acc_no', 'account', 'acct']),
+                last_transaction: colIdx(hdrs, ['last_transaction', 'transaction_date', 'last_tx_date', 'last_tx', 'transaction']),
+                due_amount:       colIdx(hdrs, ['due_amount', 'amount_due', 'amount', 'due', 'kes', 'balance', 'value']),
+                compilation_date: colIdx(hdrs, ['compilation_date', 'compiled_date', 'compilation', 'compiled', 'date_compiled'])
             };
 
             const parsedRows = [];
@@ -546,15 +556,18 @@ function loadExcelAndRedirect(event) {
                 const r = raw[i];
                 if (!r || r.every(c => String(c).trim() === '')) continue;
 
-                const getC = idx => (idx >= 0 && r[idx] !== undefined && r[idx] !== null) ? String(r[idx]).trim() : '';
+                const getC = (idx, fallback) => {
+                    const colToUse = idx >= 0 ? idx : fallback;
+                    return (colToUse >= 0 && r[colToUse] !== undefined && r[colToUse] !== null) ? String(r[colToUse]).trim() : '';
+                };
                 parsedRows.push({
-                    owner_name:       getC(col.owner_name),
-                    id_passport_no:   getC(col.id_passport_no),
-                    date_of_birth:    getC(col.date_of_birth),
-                    account_number:   getC(col.account_number),
-                    last_transaction: getC(col.last_transaction),
-                    due_amount:       getC(col.due_amount),
-                    compilation_date: getC(col.compilation_date)
+                    owner_name:       getC(col.owner_name, 0),
+                    id_passport_no:   getC(col.id_passport_no, 1),
+                    date_of_birth:    getC(col.date_of_birth, 2),
+                    account_number:   getC(col.account_number, 3),
+                    last_transaction: getC(col.last_transaction, 4),
+                    due_amount:       getC(col.due_amount, 5),
+                    compilation_date: getC(col.compilation_date, 6)
                 });
             }
 

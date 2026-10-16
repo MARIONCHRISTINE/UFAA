@@ -259,34 +259,36 @@ require_once 'includes/layout.php';
         const reader = new FileReader();
         reader.onload = async e => {
             try {
-                const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true });
+                const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: false });
                 const ws = wb.Sheets[wb.SheetNames[0]];
-                const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+                // raw: false ensures formatted text (cell.w) is preserved (e.g. leading zeros like 0712345678, exact date strings)
+                const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
                 if (!raw || raw.length < 2) { alert('No data rows found in uploaded file.'); return; }
 
                 const hdrs = raw[0].map(h => String(h).trim().toLowerCase());
                 const col = {
-                    owner_name: colIdx(hdrs, ['owner', 'name', 'holder']),
-                    id_passport_no: colIdx(hdrs, ['passport', 'id_number', 'id_no', 'id']),
-                    date_of_birth: colIdx(hdrs, ['birth', 'dob']),
-                    account_number: colIdx(hdrs, ['account', 'acct', 'acc']),
-                    last_transaction: colIdx(hdrs, ['transaction', 'last_tx', 'tx']),
-                    due_amount: colIdx(hdrs, ['amount', 'due', 'kes', 'balance', 'value']),
-                    compilation_date: colIdx(hdrs, ['compilation', 'compiled', 'date_compiled'])
+                    owner_name: colIdx(hdrs, ['owner_name', 'holder_name', 'customer_name', 'full_name', 'owner', 'name', 'holder']),
+                    id_passport_no: colIdx(hdrs, ['passport', 'id_number', 'id_no', 'national_id', 'id_num', 'id']),
+                    date_of_birth: colIdx(hdrs, ['date_of_birth', 'birth_date', 'dob', 'birth']),
+                    account_number: colIdx(hdrs, ['account_number', 'account_no', 'acc_no', 'account', 'acct']),
+                    last_transaction: colIdx(hdrs, ['last_transaction', 'transaction_date', 'last_tx_date', 'last_tx', 'transaction']),
+                    due_amount: colIdx(hdrs, ['due_amount', 'amount_due', 'amount', 'due', 'kes', 'balance', 'value']),
+                    compilation_date: colIdx(hdrs, ['compilation_date', 'compiled_date', 'compilation', 'compiled', 'date_compiled'])
                 };
 
                 let parsedRows = [];
                 for (let i = 1; i < raw.length; i++) {
                     const r = raw[i];
                     if (!r || r.every(c => String(c).trim() === '')) continue;
+                    // Keep exact raw text as uploaded - do not modify or format anything yet
                     parsedRows.push({
-                        owner_name: txt(r[col.owner_name >= 0 ? col.owner_name : 0]),
-                        id_passport_no: txt(r[col.id_passport_no >= 0 ? col.id_passport_no : 1]),
-                        date_of_birth: fmtDate(r[col.date_of_birth >= 0 ? col.date_of_birth : 2]),
-                        account_number: txt(r[col.account_number >= 0 ? col.account_number : 3]),
-                        last_transaction: fmtDate(r[col.last_transaction >= 0 ? col.last_transaction : 4]),
-                        due_amount: txt(r[col.due_amount >= 0 ? col.due_amount : 5]).replace(/,/g, ''),
-                        compilation_date: fmtDate(r[col.compilation_date >= 0 ? col.compilation_date : 6])
+                        owner_name:       rawVal(col.owner_name >= 0 ? r[col.owner_name] : r[0]),
+                        id_passport_no:   rawVal(col.id_passport_no >= 0 ? r[col.id_passport_no] : r[1]),
+                        date_of_birth:    rawVal(col.date_of_birth >= 0 ? r[col.date_of_birth] : r[2]),
+                        account_number:   rawVal(col.account_number >= 0 ? r[col.account_number] : r[3]),
+                        last_transaction: rawVal(col.last_transaction >= 0 ? r[col.last_transaction] : r[4]),
+                        due_amount:       rawVal(col.due_amount >= 0 ? r[col.due_amount] : r[5]),
+                        compilation_date: rawVal(col.compilation_date >= 0 ? r[col.compilation_date] : r[6])
                     });
                 }
 
@@ -346,9 +348,28 @@ require_once 'includes/layout.php';
         reader.readAsArrayBuffer(file);
     }
 
-    function txt(v) { return String(v ?? '').trim(); }
-    function fmtDate(v) { if (!v) return ''; if (v instanceof Date) return v.toISOString().split('T')[0]; return txt(v); }
-    function colIdx(h, keys) { return h.findIndex(x => keys.some(k => x.includes(k))); }
+    function rawVal(v) { return (v === null || v === undefined) ? '' : String(v).trim(); }
+    function txt(v) { return rawVal(v); }
+    function fmtDate(v) { return rawVal(v); }
+    function colIdx(h, keys) {
+        // 1. First priority: exact match
+        for (const k of keys) {
+            const exact = h.findIndex(x => x === k);
+            if (exact >= 0) return exact;
+        }
+        // 2. Second priority: word boundary match (prevents 'paid' matching 'id' or 'matrix' matching 'tx')
+        for (const k of keys) {
+            const found = h.findIndex(x => {
+                if (k.length <= 2) {
+                    const re = new RegExp('(^|[^a-z0-9])' + k + '([^a-z0-9]|$)', 'i');
+                    return re.test(x);
+                }
+                return x.includes(k);
+            });
+            if (found >= 0) return found;
+        }
+        return -1;
+    }
     function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
     function escAttr(s) { return escHtml(s).replace(/"/g, '&quot;'); }
     function formatRelTime(dtStr) {
