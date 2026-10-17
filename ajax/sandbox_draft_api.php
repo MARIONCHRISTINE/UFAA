@@ -428,6 +428,53 @@ try {
         exit;
     }
 
+    /* DELETE_ROWS (Remove multiple rows by indices, real-time) */
+    if ($action === 'delete_rows') {
+        $draftId    = (int)($data['draft_id'] ?? 0);
+        $rowIndices = (array)($data['row_indices'] ?? []);
+
+        if (!$draftId || empty($rowIndices)) {
+            if (ob_get_length()) ob_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'message' => 'Invalid delete_rows parameters']);
+            exit;
+        }
+
+        $stmt = $pdo->prepare("SELECT `rows_data` FROM `sandbox_drafts` WHERE `id` = ? AND `status` = 'active'");
+        $stmt->execute([$draftId]);
+        $draft = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$draft) {
+            if (ob_get_length()) ob_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'message' => 'Draft not found']);
+            exit;
+        }
+
+        $rows = fetchDraftRows($draftId, $draft['rows_data'] ?? '');
+        // Sort descending so splicing from bottom doesn't offset preceding indices
+        $indices = array_unique(array_map('intval', $rowIndices));
+        rsort($indices);
+        foreach ($indices as $idx) {
+            if (isset($rows[$idx])) {
+                array_splice($rows, $idx, 1);
+            }
+        }
+        storeDraftRowsOnDisk($draftId, $rows);
+
+        $totalRows     = count($rows);
+        $rowsDataForDb = ($totalRows > 0)
+            ? ('[file_stored:' . $totalRows . ']')
+            : '[]';
+
+        $pdo->prepare("UPDATE `sandbox_drafts` SET `rows_data` = ?, `last_edited_by` = ?, `updated_at` = NOW() WHERE `id` = ?")
+            ->execute([$rowsDataForDb, $currentUser, $draftId]);
+
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'success', 'total_rows' => $totalRows]);
+        exit;
+    }
+
 
     /* SAVE_CHUNK (Safe Upload for Up to 500k Rows) ──────── */
     if ($action === 'save_chunk') {

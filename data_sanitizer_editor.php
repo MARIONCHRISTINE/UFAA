@@ -1386,8 +1386,8 @@ function renderVirtualRows(forceReset = false) {
             <td contenteditable="true" data-row="${globalRowIdx}" data-field="compilation_date" onblur="updateCell(${globalRowIdx},'compilation_date',this.innerText)" style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('compilation_date')}" title="${ct('compilation_date')}">${cellVal('compilation_date', r.compilation_date)}</td>
             <td style="padding:.45rem;text-align:center;white-space:nowrap;">
                 ${isDup && dupDetail && dupDetail.type === 'in_file'
-                    ? `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.68rem;color:#7c3aed;border:1px solid #ddd6fe;border-radius:4px;" title="Remove this duplicate, keep the other copy">Keep 1</button>`
-                    : `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;"><i class="fa-solid fa-trash-can"></i></button>`
+                    ? `<button onclick="keepOneDuplicateRow(${globalRowIdx})" class="btn-reset" style="padding:.22rem .55rem;font-size:.7rem;font-weight:700;color:#6d28d9;background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;" title="Keep this row and remove all duplicate copies">Keep 1</button>`
+                    : `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;" title="Delete this record"><i class="fa-solid fa-trash-can"></i></button>`
                 }
             </td>
         </tr>
@@ -1411,6 +1411,124 @@ function toggleDuplicateDrawer(origIdx) {
     renderVirtualRows(true);
 }
 
+/* ─── 6-Field Duplicate Key Generator (Identical to Server Engine) ── */
+function make6FieldKey(r) {
+    if (!r) return '';
+    const normId   = String(r.id_passport_no || '').trim().toUpperCase();
+    const normDob  = flexDate(r.date_of_birth);
+    const normAcct = String(r.account_number || '').trim().toUpperCase().replace(/[\s\-_]/g, '');
+    const normTx   = flexDate(r.last_transaction);
+    const cleanAmt = String(r.due_amount || '').replace(/[^\d\.\-]/g, '');
+    const normAmt  = (!isNaN(parseFloat(cleanAmt)) && isFinite(cleanAmt)) ? parseFloat(cleanAmt).toFixed(2) : String(r.due_amount || '').trim().toLowerCase();
+    const normComp = flexDate(r.compilation_date);
+    return `${normId}|${normDob}|${normAcct}|${normTx}|${normAmt}|${normComp}`;
+}
+
+/* ─── Optimistic Summary Recalculator ───────────────────── */
+function updateOptimisticSummary() {
+    let clean = 0, critical = 0, warnings = 0, dupCount = 0;
+    for (let i = 0; i < gridRows.length; i++) {
+        const r = gridRows[i];
+        const rowNum = i + 1;
+        const hasCritical = r.has_critical || (r.errors && Object.keys(r.errors).length > 0);
+        const hasWarnings = r.warnings && Object.keys(r.warnings).length > 0;
+        const hasDupErr   = r.errors && r.errors.account_number && r.errors.account_number.toLowerCase().includes('duplicate');
+        const inDetails   = latestDuplicateDetails.some(d => d.row_num === rowNum || (d.type === 'in_file' && d.matched_with_row === rowNum));
+        
+        if (hasCritical) critical++;
+        if (hasWarnings) warnings++;
+        if (!hasCritical && !hasWarnings) clean++;
+        if (hasDupErr || inDetails) dupCount++;
+    }
+    const totalEl = document.getElementById('summary-total');
+    const cleanEl = document.getElementById('summary-clean');
+    const critEl  = document.getElementById('summary-critical');
+    const warnEl  = document.getElementById('summary-warnings');
+    const dupEl   = document.getElementById('summary-duplicates');
+
+    if (totalEl) totalEl.textContent = gridRows.length.toLocaleString();
+    if (cleanEl) cleanEl.textContent = clean.toLocaleString();
+    if (critEl)  critEl.textContent  = critical.toLocaleString();
+    if (warnEl)  warnEl.textContent  = warnings.toLocaleString();
+    if (dupEl)   dupEl.textContent   = dupCount.toLocaleString();
+}
+
+/* ─── Keep 1 In-File Duplicate (Real-Time Disappearance) ── */
+async function keepOneDuplicateRow(keptIdx) {
+    if (!gridRows[keptIdx]) return;
+    pushStateToHistory();
+
+    const keptRow = gridRows[keptIdx];
+    const key = make6FieldKey(keptRow);
+
+    // Find all other rows matching this exact 6-field key
+    const toRemoveIndices = [];
+    for (let i = 0; i < gridRows.length; i++) {
+        if (i !== keptIdx && make6FieldKey(gridRows[i]) === key) {
+            toRemoveIndices.push(i);
+        }
+    }
+
+    if (toRemoveIndices.length === 0) {
+        // If no matching rows found by key, treat kept row as unique and remove any duplicate label
+        if (keptRow.errors && keptRow.errors.account_number && keptRow.errors.account_number.toLowerCase().includes('duplicate')) {
+            delete keptRow.errors.account_number;
+            keptRow.has_critical = Object.keys(keptRow.errors).length > 0;
+            keptRow.is_clean     = !keptRow.has_critical && (!keptRow.warnings || Object.keys(keptRow.warnings).length === 0);
+        }
+        renderGridTable();
+        return;
+    }
+
+    // Sort descending so splicing from highest index does not disturb lower indices
+    toRemoveIndices.sort((a, b) => b - a);
+
+    // Splice out all duplicate copies from gridRows
+    toRemoveIndices.forEach(delIdx => {
+        gridRows.splice(delIdx, 1);
+    });
+
+    // Compute new index for kept row after shifts
+    const shiftCount = toRemoveIndices.filter(i => i < keptIdx).length;
+    const newKeptIdx = keptIdx - shiftCount;
+    const finalKeptRow = gridRows[newKeptIdx];
+
+    // Clear duplicate error on the kept row because it is now unique in the file!
+    if (finalKeptRow && finalKeptRow.errors && finalKeptRow.errors.account_number &&
+        finalKeptRow.errors.account_number.toLowerCase().includes('duplicate')) {
+        delete finalKeptRow.errors.account_number;
+        finalKeptRow.has_critical = Object.keys(finalKeptRow.errors).length > 0;
+        finalKeptRow.is_clean     = !finalKeptRow.has_critical && (!finalKeptRow.warnings || Object.keys(finalKeptRow.warnings).length === 0);
+    }
+
+    // Remove this key completely from latestDuplicateDetails
+    latestDuplicateDetails = latestDuplicateDetails.filter(d => make6FieldKey(d) !== key);
+
+    // Clear expanded drawer states
+    expandedDrawers.clear();
+
+    // 0ms REAL-TIME UI UPDATE: recalculate counters & re-render grid immediately
+    updateOptimisticSummary();
+    renderGridTable();
+
+    // Persist batch deletions to server in background
+    if (currentDraftId) {
+        try {
+            await fetch('ajax/sandbox_draft_api.php?action=delete_rows', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ draft_id: currentDraftId, row_indices: toRemoveIndices })
+            });
+        } catch (e) {
+            saveInitialDraft();
+            return;
+        }
+    }
+
+    // Background server validation to synchronize full database checks
+    validateGrid();
+}
+
 /* ─── Cell update ──────────────────────────────────────── */
 async function updateCell(rowIdx, field, val) {
     if (!gridRows[rowIdx]) return;
@@ -1430,25 +1548,55 @@ async function updateCell(rowIdx, field, val) {
     }
 }
 
+/* ─── Real-Time Single Row Deletion ─────────────────────── */
 async function removeGridRow(idx) {
+    if (!gridRows[idx]) return;
     pushStateToHistory();
+
+    const targetRow = gridRows[idx];
+    const key = make6FieldKey(targetRow);
+
+    // Remove row from memory immediately
     gridRows.splice(idx, 1);
 
-    // Re-index duplicate details so row numbers stay correct after removal
-    latestDuplicateDetails = latestDuplicateDetails
-        .filter(d => d.row_num !== idx + 1 && !(d.type === 'in_file' && d.matched_with_row === idx + 1))
-        .map(d => ({
-            ...d,
-            row_num:          d.row_num          > idx + 1 ? d.row_num          - 1 : d.row_num,
-            matched_with_row: d.matched_with_row > idx + 1 ? d.matched_with_row - 1 : d.matched_with_row
-        }));
+    // If this row was an in-file duplicate, check if only 1 matching row remains
+    const remainingMatches = [];
+    for (let i = 0; i < gridRows.length; i++) {
+        if (make6FieldKey(gridRows[i]) === key) {
+            remainingMatches.push(i);
+        }
+    }
+    // If exactly 1 row remains with this key, it is no longer duplicate! Clear its duplicate error!
+    if (remainingMatches.length === 1) {
+        const remainingRow = gridRows[remainingMatches[0]];
+        if (remainingRow && remainingRow.errors && remainingRow.errors.account_number &&
+            remainingRow.errors.account_number.toLowerCase().includes('duplicate')) {
+            delete remainingRow.errors.account_number;
+            remainingRow.has_critical = Object.keys(remainingRow.errors).length > 0;
+            remainingRow.is_clean     = !remainingRow.has_critical && (!remainingRow.warnings || Object.keys(remainingRow.warnings).length === 0);
+        }
+        latestDuplicateDetails = latestDuplicateDetails.filter(d => make6FieldKey(d) !== key);
+    } else {
+        // Re-index remaining duplicate details
+        latestDuplicateDetails = latestDuplicateDetails
+            .filter(d => d.row_num !== idx + 1 && !(d.type === 'in_file' && d.matched_with_row === idx + 1))
+            .map(d => ({
+                ...d,
+                row_num:          d.row_num          > idx + 1 ? d.row_num          - 1 : d.row_num,
+                matched_with_row: d.matched_with_row > idx + 1 ? d.matched_with_row - 1 : d.matched_with_row
+            }));
+    }
 
-    // Remove from expanded drawers set (re-map indices)
+    // Re-map expanded drawers
     const newExpanded = new Set();
     expandedDrawers.forEach(i => { if (i !== idx) newExpanded.add(i > idx ? i - 1 : i); });
     expandedDrawers = newExpanded;
 
-    // Persist deletion immediately via API (real-time, no reload needed)
+    // 0ms REAL-TIME UI UPDATE: row disappears on screen immediately!
+    updateOptimisticSummary();
+    renderGridTable();
+
+    // Persist deletion immediately via API (background sync)
     if (currentDraftId) {
         try {
             await fetch('ajax/sandbox_draft_api.php?action=delete_row', {
@@ -1457,7 +1605,6 @@ async function removeGridRow(idx) {
                 body: JSON.stringify({ draft_id: currentDraftId, row_index: idx })
             });
         } catch (e) {
-            // If API call fails, fall back to full save
             saveInitialDraft();
             return;
         }
@@ -1465,6 +1612,7 @@ async function removeGridRow(idx) {
 
     validateGrid();
 }
+
 
 /* ─── Date fix ─────────────────────────────────────────── */
 function autoFixAllCompilationDates() {
