@@ -1,11 +1,141 @@
 <?php
 /**
- * SimpleXLSXGen PHP library - High Performance Streaming Edition
+ * SimpleXLSXGen PHP library - High Performance Universal Streaming Edition
  * Generates protected, password-locked XLSX files with constant O(1) memory usage.
- * Uses disk-buffered streaming & inline strings to support up to 500,000+ rows without PHP memory exhaustion.
+ * Features built-in Pure-PHP Zip streaming fallback so it works seamlessly even if
+ * the server does NOT have the PHP ZipArchive extension installed.
  */
 
 namespace Shuchkin;
+
+class SimpleZipWriter {
+    protected $fp;
+    protected $cd = [];
+    protected $offset = 0;
+
+    public function __construct(string $filename) {
+        $this->fp = @fopen($filename, 'wb');
+    }
+
+    public function isOpen(): bool {
+        return is_resource($this->fp);
+    }
+
+    public function addFromString(string $name, string $data): bool {
+        if (!$this->fp) return false;
+        $crc = crc32($data);
+        $uncompLen = strlen($data);
+
+        if (function_exists('gzdeflate')) {
+            $compData = gzdeflate($data, 6);
+            $compLen = strlen($compData);
+            $method = 8;
+        } else {
+            $compData = $data;
+            $compLen = $uncompLen;
+            $method = 0;
+        }
+
+        $headerOffset = $this->offset;
+        $localHeader = pack(
+            'VvvvVVVVvv',
+            0x04034b50, 20, 0, $method, 0, $crc, $compLen, $uncompLen, strlen($name), 0
+        ) . $name;
+
+        fwrite($this->fp, $localHeader);
+        fwrite($this->fp, $compData);
+        $this->offset += strlen($localHeader) + $compLen;
+
+        $this->cd[] = [
+            'name'      => $name,
+            'method'    => $method,
+            'crc'       => $crc,
+            'compLen'   => $compLen,
+            'uncompLen' => $uncompLen,
+            'offset'    => $headerOffset
+        ];
+        return true;
+    }
+
+    public function addFile(string $filePath, string $name): bool {
+        if (!$this->fp || !file_exists($filePath)) return false;
+        $fileSize = filesize($filePath);
+        $crc = crc32_file($filePath);
+
+        // If file is moderate (under 25MB) and gzdeflate exists, compress it
+        if ($fileSize < 25 * 1024 * 1024 && function_exists('gzdeflate')) {
+            $content = file_get_contents($filePath);
+            $compData = gzdeflate($content, 6);
+            $compLen = strlen($compData);
+            $method = 8;
+            $headerOffset = $this->offset;
+            $localHeader = pack(
+                'VvvvVVVVvv',
+                0x04034b50, 20, 0, $method, 0, $crc, $compLen, $fileSize, strlen($name), 0
+            ) . $name;
+
+            fwrite($this->fp, $localHeader);
+            fwrite($this->fp, $compData);
+            $this->offset += strlen($localHeader) + $compLen;
+            unset($content, $compData);
+        } else {
+            // Stream directly from disk with ZERO memory overhead (method 0 = STORED)
+            $method = 0;
+            $headerOffset = $this->offset;
+            $localHeader = pack(
+                'VvvvVVVVvv',
+                0x04034b50, 20, 0, $method, 0, $crc, $fileSize, $fileSize, strlen($name), 0
+            ) . $name;
+
+            fwrite($this->fp, $localHeader);
+            $src = fopen($filePath, 'rb');
+            if ($src) {
+                stream_copy_to_stream($src, $this->fp);
+                fclose($src);
+            }
+            $this->offset += strlen($localHeader) + $fileSize;
+        }
+
+        $this->cd[] = [
+            'name'      => $name,
+            'method'    => $method,
+            'crc'       => $crc,
+            'compLen'   => ($method === 8 ? $compLen : $fileSize),
+            'uncompLen' => $fileSize,
+            'offset'    => $headerOffset
+        ];
+        return true;
+    }
+
+    public function close(): bool {
+        if (!$this->fp) return false;
+        $cdStart = $this->offset;
+        $cdSize = 0;
+
+        foreach ($this->cd as $item) {
+            $cdHeader = pack(
+                'VvvvvVVVVvvvvvVV',
+                0x02014b50, 20, 20, 0, $item['method'], 0, $item['crc'],
+                $item['compLen'], $item['uncompLen'], strlen($item['name']),
+                0, 0, 0, 0, 0, $item['offset']
+            ) . $item['name'];
+
+            fwrite($this->fp, $cdHeader);
+            $cdSize += strlen($cdHeader);
+        }
+
+        $count = count($this->cd);
+        $eocd = pack(
+            'VvvvvVVv',
+            0x06054b50, 0, 0, $count, $count, $cdSize, $cdStart, 0
+        );
+
+        fwrite($this->fp, $eocd);
+        fclose($this->fp);
+        $this->fp = null;
+        return true;
+    }
+}
 
 class SimpleXLSXGen {
 
@@ -22,7 +152,7 @@ class SimpleXLSXGen {
     }
 
     public static function hasZipSupport(): bool {
-        return class_exists('\\ZipArchive');
+        return class_exists('\\ZipArchive') || function_exists('gzdeflate');
     }
 
     public static function fromArray(array $rows, $sheetName = 'UFAA Submission') {
@@ -54,9 +184,6 @@ class SimpleXLSXGen {
         return sys_get_temp_dir();
     }
 
-    /**
-     * Excel password hash algorithm (ISO 29500 / OpenXML standard)
-     */
     protected function calcPasswordHash($password) {
         $password = (string) $password;
         $hash = 0;
@@ -85,7 +212,6 @@ class SimpleXLSXGen {
 
         $currentRowNum = 1;
 
-        // Write header row if supplied via fromArrayWithHeader
         if (!empty($this->headerRow) && is_array($this->headerRow)) {
             $hBuf = '        <row r="1">';
             $hVals = array_values($this->headerRow);
@@ -106,7 +232,6 @@ class SimpleXLSXGen {
             $rowNum = $currentRowNum++;
             $rowBuf = '        <row r="' . $rowNum . '">';
 
-            // Support both numeric indexed rows and associative row objects
             $colValues = [];
             if (isset($row['owner_name']) || isset($row['account_number'])) {
                 $colValues = [
@@ -129,7 +254,6 @@ class SimpleXLSXGen {
                 $strVal = (string)$val;
                 $styleAttr = ($rowNum === 1) ? ' s="1"' : '';
 
-                // If numeric, write directly as numeric cell; otherwise write as inline string
                 if ($rowNum > 1 && is_numeric($strVal) && !preg_match('/^0\d+/', $strVal) && strlen($strVal) < 18) {
                     $rowBuf .= '<c r="' . $cellRef . '"' . $styleAttr . '><v>' . $strVal . '</v></c>';
                 } else {
@@ -154,14 +278,22 @@ class SimpleXLSXGen {
         return true;
     }
 
-    /**
-     * Builds and saves the XLSX zip archive directly to the destination path.
-     * Uses constant memory regardless of whether there are 1,000 or 500,000 rows.
-     */
     public function saveAs($filename): bool {
-        $zip = new \ZipArchive();
-        if ($zip->open($filename, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
-            return false;
+        $zip = null;
+        $useNativeZip = class_exists('\\ZipArchive');
+
+        if ($useNativeZip) {
+            $zip = new \ZipArchive();
+            if ($zip->open($filename, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+                $zip = null; // Fallback to Pure-PHP writer
+            }
+        }
+
+        if (!$zip) {
+            $zip = new SimpleZipWriter($filename);
+            if (!$zip->isOpen()) {
+                return false;
+            }
         }
 
         // 1. [Content_Types].xml
@@ -181,7 +313,7 @@ class SimpleXLSXGen {
     <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>');
 
-        // 3. xl/sharedStrings.xml (minimal empty catalog since inlineStr is used for O(1) memory)
+        // 3. xl/sharedStrings.xml
         $zip->addFromString('xl/sharedStrings.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="0" uniqueCount="0"/>');
 
@@ -268,4 +400,3 @@ class SimpleXLSXGen {
         return $letter;
     }
 }
-
