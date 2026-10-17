@@ -71,7 +71,7 @@ require_once 'includes/layout.php';
                     computer</span></p>
             <span
                 style="font-size:.78rem; color:#64748b; background:#f8fafc; padding:.35rem 1rem; border-radius:20px; border:1px solid #e2e8f0;">
-                Supports .xlsx · .xls · .csv &nbsp;—&nbsp; Single worksheet format
+                Supports .xlsx · .xls · .csv &nbsp;—&nbsp; Max 500,000 records per batch &nbsp;—&nbsp; Single worksheet format
             </span>
         </div>
     </div>
@@ -368,7 +368,7 @@ require_once 'includes/layout.php';
 
                 // Enforce 500,000 maximum row limit as requested
                 if (parsedRows.length > 500000) {
-                    alert(`The uploaded file contains ${parsedRows.length.toLocaleString()} rows. System is capped at 500,000 rows maximum. Limiting to the first 500,000 rows.`);
+                    alert(`Notice: The uploaded file contains ${parsedRows.length.toLocaleString()} rows.\n\nTo prevent browser memory freezes and ensure smooth performance, each upload batch is capped at 500,000 records. The first 500,000 rows have been loaded into this working draft.\n\nSubsequent records can be uploaded in a separate batch and merged for final UFAA submission.`);
                     parsedRows = parsedRows.slice(0, 500000);
                 }
 

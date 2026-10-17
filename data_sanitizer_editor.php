@@ -239,11 +239,11 @@ require_once 'includes/layout.php';
             style="background:#fff; padding:.85rem 1rem; border-radius:10px; border:1px solid #e2e8f0; cursor:pointer; transition:all 0.15s ease;"
             onclick="setCardFilter('duplicates')" title="Click to filter duplicate rows only">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div class="dp-label" style="color:#6b21a8;">Duplicates</div>
+                <div class="dp-label" style="color:#b91c1c;">Duplicates</div>
                 <span class="card-filter-badge"
-                    style="font-size:.68rem; font-weight:700; color:#6b21a8; background:#f3e8ff; padding:1px 6px; border-radius:6px;">Filter</span>
+                    style="font-size:.68rem; font-weight:700; color:#b91c1c; background:#fee2e2; padding:1px 6px; border-radius:6px;">Filter</span>
             </div>
-            <div id="summary-duplicates" style="font-size:1.45rem; font-weight:800; color:#6b21a8;">0</div>
+            <div id="summary-duplicates" style="font-size:1.45rem; font-weight:800; color:#b91c1c;">0</div>
         </div>
     </div>
 
@@ -272,8 +272,8 @@ require_once 'includes/layout.php';
                 <i class="fa-solid fa-wand-magic-sparkles" style="color:#6d28d9;"></i> Auto-Fix Dates
             </button>
             <button class="btn-reset" onclick="openDuplicateInspectorModal()"
-                style="padding:.42rem .85rem; font-size:.82rem; border-radius:7px; color:#4338ca; background:#f5f3ff; border:1px solid #ddd6fe;">
-                <i class="fa-solid fa-copy"></i> Inspect Duplicates
+                style="padding:.42rem .85rem; font-size:.82rem; border-radius:7px; color:#b91c1c; background:#fef2f2; border:1px solid #fecaca;">
+                <i class="fa-solid fa-copy" style="color:#dc2626;"></i> Inspect Duplicates
             </button>
         </div>
         <button id="btn-submit-locked" class="btn-filter" onclick="commitSanitizedUpload()"
@@ -285,28 +285,31 @@ require_once 'includes/layout.php';
 
     <!-- Bulk Duplicate Actions Bar (Visible under Duplicates filter) -->
     <div id="duplicate-bulk-bar"
-        style="display:none; background:#faf5ff; border:1.5px solid #d8b4fe; border-radius:10px; padding:.75rem 1.1rem; margin-bottom:1rem; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem; box-shadow:0 2px 6px rgba(109,40,217,0.06);">
+        style="display:none; background:#fff5f5; border:1.5px solid #fca5a5; border-radius:10px; padding:.75rem 1.1rem; margin-bottom:1rem; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem; box-shadow:0 2px 6px rgba(220,38,38,0.06);">
         <div style="display:flex; align-items:center; gap:.65rem;">
-            <span style="background:#6d28d9; color:#fff; font-size:.78rem; font-weight:800; padding:3px 9px; border-radius:6px; display:inline-flex; align-items:center; gap:.4rem;">
+            <span style="background:#b91c1c; color:#fff; font-size:.78rem; font-weight:800; padding:3px 9px; border-radius:6px; display:inline-flex; align-items:center; gap:.4rem;">
                 <i class="fa-solid fa-layer-group"></i> Duplicate Actions
             </span>
-            <span style="font-size:.8rem; font-weight:700; color:#581c87;">
+            <span style="font-size:.8rem; font-weight:700; color:#991b1b;">
                 One-click duplicate resolution for the entire file:
             </span>
         </div>
         <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;">
             <!-- Left Side: Leave 1 for In-File Duplicates -->
             <button id="btn-bulk-leave-one" onclick="bulkLeaveOneAllInFile()" class="btn-reset"
-                style="padding:.45rem .95rem; font-size:.8rem; font-weight:700; color:#4338ca; background:#ede9fe; border:1.5px solid #a5b4fc; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:.45rem; transition:all .15s ease;"
+                style="padding:.45rem .95rem; font-size:.8rem; font-weight:700; color:#b91c1c; background:#fee2e2; border:1.5px solid #fca5a5; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:.45rem; transition:all .15s ease;"
                 title="Leave 1 record for every in-file duplicate group and delete all extra duplicate copies">
                 <i class="fa-solid fa-copy"></i>
                 <span>Leave 1 (All In-File)</span>
-                <span id="badge-bulk-leave-one" style="background:#4338ca; color:#fff; font-size:.7rem; font-weight:800; padding:1px 6px; border-radius:99px;">0</span>
+                <span id="badge-bulk-leave-one" style="background:#b91c1c; color:#fff; font-size:.7rem; font-weight:800; padding:1px 6px; border-radius:99px;">0</span>
             </button>
+
+            <!-- Separation Divider Line between File duplicates and DB duplicates -->
+            <div style="height:26px; width:2px; background:#fca5a5; border-radius:2px; margin:0 .15rem;"></div>
 
             <!-- Right Side: Delete All DB Matches -->
             <button id="btn-bulk-delete-db" onclick="bulkDeleteAllDbDuplicates()" class="btn-reset"
-                style="padding:.45rem .95rem; font-size:.8rem; font-weight:700; color:#dc2626; background:#fee2e2; border:1.5px solid #fca5a5; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:.45rem; transition:all .15s ease;"
+                style="padding:.45rem .95rem; font-size:.8rem; font-weight:700; color:#dc2626; background:#fff1f2; border:1.5px solid #f87171; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:.45rem; transition:all .15s ease;"
                 title="Delete all records matching existing database records">
                 <i class="fa-solid fa-trash-can"></i>
                 <span>Delete All (DB Matches)</span>
@@ -1126,7 +1129,7 @@ require_once 'includes/layout.php';
         } else {
             const inFileDups = latestDuplicateDetails.filter(d => d.type === 'in_file');
             const dbDups = latestDuplicateDetails.filter(d => d.type === 'database');
-            const thStyle = 'padding:.5rem .65rem; border:1px solid #c7d2fe; background:#eef2ff; color:#3730a3; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap;';
+            const thStyleInFile = 'padding:.5rem .65rem; border:1px solid #fecaca; background:#fff1f2; color:#991b1b; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap;';
             const thStyleRed = 'padding:.5rem .65rem; border:1px solid #fca5a5; background:#fef2f2; color:#7f1d1d; font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap;';
             let html = '';
 
@@ -1134,41 +1137,41 @@ require_once 'includes/layout.php';
             if (inFileDups.length > 0) {
                 html += `
             <div style="margin-bottom:2rem;">
-                <div style="font-size:.85rem; font-weight:800; color:#4338ca; background:#e0e7ff; padding:.5rem .9rem; border-radius:8px; margin-bottom:.8rem; display:flex; align-items:center; justify-content:space-between;">
-                    <span><i class="fa-solid fa-copy"></i>&nbsp; Found on Same File &nbsp;<span style="background:#4338ca;color:#fff;border-radius:99px;padding:1px 9px;">${inFileDups.length}</span></span>
-                    <span style="font-size:.72rem; font-weight:600; opacity:.8;">All 6 key fields are identical within this uploaded sheet</span>
+                <div style="font-size:.85rem; font-weight:800; color:#991b1b; background:#fee2e2; border-left:4px solid #b91c1c; padding:.55rem .95rem; border-radius:8px; margin-bottom:.8rem; display:flex; align-items:center; justify-content:space-between;">
+                    <span><i class="fa-solid fa-copy" style="color:#b91c1c;"></i>&nbsp; Found on Same File &nbsp;<span style="background:#b91c1c;color:#fff;border-radius:99px;padding:1px 9px;">${inFileDups.length}</span></span>
+                    <span style="font-size:.72rem; font-weight:600; opacity:.85; color:#7f1d1d;">All 6 key fields are identical within this uploaded sheet</span>
                 </div>
-                <div style="overflow-x:auto; overflow-y:auto; border-radius:9px; border:1.5px solid #c7d2fe; max-height:350px; overscroll-behavior:contain; will-change:scroll-position;">
+                <div style="overflow-x:auto; overflow-y:auto; border-radius:9px; border:1.5px solid #fca5a5; max-height:350px; overscroll-behavior:contain; will-change:scroll-position;">
                     <table style="width:100%; border-collapse:collapse; font-size:.8rem;">
                         <thead style="position:sticky; top:0; z-index:5;">
                             <tr>
-                                <th style="${thStyle} text-align:center; width:50px;">Row #</th>
-                                <th style="${thStyle} text-align:center; width:80px;">Matches</th>
-                                <th style="${thStyle}">Owner Name</th>
-                                <th style="${thStyle}">ID / Passport No</th>
-                                <th style="${thStyle}">Date of Birth</th>
-                                <th style="${thStyle}">Account Number</th>
-                                <th style="${thStyle}">Last Transaction</th>
-                                <th style="${thStyle} text-align:right;">Due Amount (KES)</th>
-                                <th style="${thStyle}">Compilation Date</th>
-                                <th style="${thStyle} text-align:center; width:55px;">Go To</th>
+                                <th style="${thStyleInFile} text-align:center; width:50px;">Row #</th>
+                                <th style="${thStyleInFile} text-align:center; width:80px;">Matches</th>
+                                <th style="${thStyleInFile}">Owner Name</th>
+                                <th style="${thStyleInFile}">ID / Passport No</th>
+                                <th style="${thStyleInFile}">Date of Birth</th>
+                                <th style="${thStyleInFile}">Account Number</th>
+                                <th style="${thStyleInFile}">Last Transaction</th>
+                                <th style="${thStyleInFile} text-align:right;">Due Amount (KES)</th>
+                                <th style="${thStyleInFile}">Compilation Date</th>
+                                <th style="${thStyleInFile} text-align:center; width:55px;">Go To</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${inFileDups.map((d, i) => `
-                            <tr style="background:${i % 2 === 0 ? '#fff' : '#f5f3ff'}; border-left:3px solid #6366f1;">
-                                <td style="padding:.48rem .65rem; border:1px solid #e0e7ff; text-align:center; font-weight:800; color:#4f46e5;">#${d.row_num}</td>
-                                <td style="padding:.48rem .65rem; border:1px solid #e0e7ff; text-align:center; color:#7c3aed; font-weight:700; font-size:.73rem;">↔ #${d.matched_with_row}</td>
-                                <td style="padding:.48rem .65rem; border:1px solid #e0e7ff; font-weight:600; white-space:nowrap;">${escHtml(d.owner_name)}</td>
-                                <td style="padding:.48rem .65rem; border:1px solid #e0e7ff; white-space:nowrap;">${escHtml(d.id_passport_no)}</td>
-                                <td style="padding:.48rem .65rem; border:1px solid #e0e7ff; white-space:nowrap;">${escHtml(d.date_of_birth)}</td>
-                                <td style="padding:.48rem .65rem; border:1px solid #e0e7ff; font-weight:700; white-space:nowrap;">${escHtml(d.account_number)}</td>
-                                <td style="padding:.48rem .65rem; border:1px solid #e0e7ff; white-space:nowrap;">${escHtml(d.last_transaction)}</td>
-                                <td style="padding:.48rem .65rem; border:1px solid #e0e7ff; text-align:right; font-weight:700; white-space:nowrap;">${escHtml(d.due_amount)}</td>
-                                <td style="padding:.48rem .65rem; border:1px solid #e0e7ff; white-space:nowrap;">${escHtml(d.compilation_date)}</td>
-                                <td style="padding:.48rem .65rem; border:1px solid #e0e7ff; text-align:center;">
+                            <tr style="background:${i % 2 === 0 ? '#fff' : '#fff5f5'}; border-left:3px solid #ef4444;">
+                                <td style="padding:.48rem .65rem; border:1px solid #fee2e2; text-align:center; font-weight:800; color:#b91c1c;">#${d.row_num}</td>
+                                <td style="padding:.48rem .65rem; border:1px solid #fee2e2; text-align:center; color:#991b1b; font-weight:700; font-size:.73rem;">↔ #${d.matched_with_row}</td>
+                                <td style="padding:.48rem .65rem; border:1px solid #fee2e2; font-weight:600; white-space:nowrap;">${escHtml(d.owner_name)}</td>
+                                <td style="padding:.48rem .65rem; border:1px solid #fee2e2; white-space:nowrap;">${escHtml(d.id_passport_no)}</td>
+                                <td style="padding:.48rem .65rem; border:1px solid #fee2e2; white-space:nowrap;">${escHtml(d.date_of_birth)}</td>
+                                <td style="padding:.48rem .65rem; border:1px solid #fee2e2; font-weight:700; white-space:nowrap;">${escHtml(d.account_number)}</td>
+                                <td style="padding:.48rem .65rem; border:1px solid #fee2e2; white-space:nowrap;">${escHtml(d.last_transaction)}</td>
+                                <td style="padding:.48rem .65rem; border:1px solid #fee2e2; text-align:right; font-weight:700; white-space:nowrap;">${escHtml(d.due_amount)}</td>
+                                <td style="padding:.48rem .65rem; border:1px solid #fee2e2; white-space:nowrap;">${escHtml(d.compilation_date)}</td>
+                                <td style="padding:.48rem .65rem; border:1px solid #fee2e2; text-align:center;">
                                     <button onclick="closeDuplicateInspectorModal(); jumpToCell(${d.row_num - 1},'account_number');"
-                                        class="btn-filter" style="padding:.26rem .55rem; font-size:.72rem; border-radius:6px;"
+                                        class="btn-filter" style="padding:.26rem .55rem; font-size:.72rem; border-radius:6px; background:#b91c1c; border-color:#991b1b;"
                                         title="Jump to row #${d.row_num} in the grid">
                                         <i class="fa-solid fa-crosshairs"></i>
                                     </button>
@@ -1705,28 +1708,28 @@ require_once 'includes/layout.php';
                     const copiesRowsHtml = inFileCopies.map(copyIdx => {
                         const cr = gridRows[copyIdx] || {};
                         return `
-                        <tr style="background:#fff; border-bottom:1px solid #e0e7ff;">
-                            <td style="padding:.4rem .6rem; text-align:center; font-weight:800; color:#4338ca; border:1px solid #c7d2fe;">#${copyIdx + 1}</td>
-                            <td style="padding:.4rem .6rem; border:1px solid #c7d2fe; font-weight:600; white-space:nowrap;">${escHtml(cr.owner_name)}</td>
-                            <td style="padding:.4rem .6rem; border:1px solid #c7d2fe; white-space:nowrap;">${escHtml(cr.id_passport_no)}</td>
-                            <td style="padding:.4rem .6rem; border:1px solid #c7d2fe; white-space:nowrap;">${escHtml(cr.date_of_birth)}</td>
-                            <td style="padding:.4rem .6rem; border:1px solid #c7d2fe; font-weight:700; white-space:nowrap;">${escHtml(cr.account_number)}</td>
-                            <td style="padding:.4rem .6rem; border:1px solid #c7d2fe; white-space:nowrap;">${escHtml(cr.last_transaction)}</td>
-                            <td style="padding:.4rem .6rem; border:1px solid #c7d2fe; text-align:right; font-weight:700; white-space:nowrap;">${escHtml(cr.due_amount)}</td>
-                            <td style="padding:.4rem .6rem; border:1px solid #c7d2fe; white-space:nowrap;">${escHtml(cr.compilation_date)}</td>
+                        <tr style="background:#fff; border-bottom:1px solid #fee2e2;">
+                            <td style="padding:.4rem .6rem; text-align:center; font-weight:800; color:#b91c1c; border:1px solid #fecaca;">#${copyIdx + 1}</td>
+                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; font-weight:600; white-space:nowrap;">${escHtml(cr.owner_name)}</td>
+                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; white-space:nowrap;">${escHtml(cr.id_passport_no)}</td>
+                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; white-space:nowrap;">${escHtml(cr.date_of_birth)}</td>
+                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; font-weight:700; white-space:nowrap;">${escHtml(cr.account_number)}</td>
+                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; white-space:nowrap;">${escHtml(cr.last_transaction)}</td>
+                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; text-align:right; font-weight:700; white-space:nowrap;">${escHtml(cr.due_amount)}</td>
+                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; white-space:nowrap;">${escHtml(cr.compilation_date)}</td>
                         </tr>`;
                     }).join('');
 
                     drawerHtml = `
-                    <tr style="background:#f5f3ff;">
-                        <td colspan="9" style="padding:.65rem .85rem; border-bottom:2px solid #c7d2fe;">
-                            <div style="background:#fff; border:1px solid #c7d2fe; border-radius:9px; padding:.65rem .85rem; box-shadow:0 2px 8px rgba(67,56,202,0.08);">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; padding-bottom:.35rem; border-bottom:1px dashed #c7d2fe;">
+                    <tr style="background:#fff5f5;">
+                        <td colspan="9" style="padding:.65rem .85rem; border-bottom:2px solid #fca5a5;">
+                            <div style="background:#fff; border:1px solid #fca5a5; border-radius:9px; padding:.65rem .85rem; box-shadow:0 2px 8px rgba(220,38,38,0.06);">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; padding-bottom:.35rem; border-bottom:1px dashed #fca5a5;">
                                     <div style="display:flex; align-items:center; gap:.6rem;">
-                                        <span style="background:#4338ca; color:#fff; font-size:.68rem; font-weight:800; padding:2px 7px; border-radius:5px;">
+                                        <span style="background:#b91c1c; color:#fff; font-size:.68rem; font-weight:800; padding:2px 7px; border-radius:5px;">
                                             <i class="fa-solid fa-copy"></i> Found on Same File
                                         </span>
-                                        <span style="font-size:.78rem; font-weight:700; color:#4338ca;">
+                                        <span style="font-size:.78rem; font-weight:700; color:#991b1b;">
                                             ${inFileCopies.length} other duplicate record(s) found in this file
                                         </span>
                                     </div>
@@ -1737,15 +1740,15 @@ require_once 'includes/layout.php';
                                 <div style="overflow-x:auto;">
                                     <table style="width:100%; border-collapse:collapse; font-size:.78rem;">
                                         <thead>
-                                            <tr style="background:#eef2ff; color:#3730a3; font-weight:700; text-transform:uppercase; font-size:.65rem;">
-                                                <th style="padding:.4rem .6rem; text-align:center; border:1px solid #c7d2fe; width:55px;">Sheet Row</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #c7d2fe;">Owner Name</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #c7d2fe;">ID / Passport No</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #c7d2fe;">Date of Birth</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #c7d2fe;">Account Number</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #c7d2fe;">Last Transaction</th>
-                                                <th style="padding:.4rem .6rem; text-align:right; border:1px solid #c7d2fe;">Due Amount (KES)</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #c7d2fe;">Compilation Date</th>
+                                            <tr style="background:#fee2e2; color:#991b1b; font-weight:700; text-transform:uppercase; font-size:.65rem;">
+                                                <th style="padding:.4rem .6rem; text-align:center; border:1px solid #fca5a5; width:55px;">Sheet Row</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fca5a5;">Owner Name</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fca5a5;">ID / Passport No</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fca5a5;">Date of Birth</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fca5a5;">Account Number</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fca5a5;">Last Transaction</th>
+                                                <th style="padding:.4rem .6rem; text-align:right; border:1px solid #fca5a5;">Due Amount (KES)</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fca5a5;">Compilation Date</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -1764,7 +1767,7 @@ require_once 'includes/layout.php';
             <td style="padding:.45rem .4rem;text-align:center;font-weight:700;color:#94a3b8;font-size:.75rem;border-right:1px solid #f1f5f9;white-space:nowrap;">
                 ${rowNum}
                 ${isDup ? `
-                    <button onclick="toggleDuplicateDrawer(${globalRowIdx})" class="btn-reset" style="margin-left:4px; padding:1px 5px; font-size:.7rem; color:${isDbDup ? '#dc2626' : '#4338ca'}; border:1px solid ${isDbDup ? '#fca5a5' : '#c7d2fe'}; background:#fff; border-radius:4px; cursor:pointer; vertical-align:middle;" title="Click to show/hide duplicate details">
+                    <button onclick="toggleDuplicateDrawer(${globalRowIdx})" class="btn-reset" style="margin-left:4px; padding:1px 5px; font-size:.7rem; color:#dc2626; border:1px solid #fca5a5; background:#fff; border-radius:4px; cursor:pointer; vertical-align:middle;" title="Click to show/hide duplicate details">
                         <i class="fa-solid ${isDrawerOpen ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>
                     </button>
                 ` : ''}
@@ -1780,7 +1783,7 @@ require_once 'includes/layout.php';
                 ${isDbDup
                     ? `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;" title="Delete this DB-duplicate record"><i class="fa-solid fa-trash-can"></i></button>`
                     : isOnlyInFileDup
-                        ? `<button onclick="leaveOneDuplicateRow(${globalRowIdx})" class="btn-reset" style="padding:.22rem .55rem;font-size:.7rem;font-weight:700;color:#6d28d9;background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;" title="Leave 1 record and remove all other duplicate copies">Leave 1</button>`
+                        ? `<button onclick="leaveOneDuplicateRow(${globalRowIdx})" class="btn-reset" style="padding:.22rem .55rem;font-size:.7rem;font-weight:700;color:#b91c1c;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;cursor:pointer;" title="Leave 1 record and remove all other duplicate copies">Leave 1</button>`
                         : `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;" title="Delete this record"><i class="fa-solid fa-trash-can"></i></button>`
                 }
             </td>
