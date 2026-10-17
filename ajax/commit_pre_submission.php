@@ -84,7 +84,7 @@ try {
     $pdo->beginTransaction();
 
     $countInserted = 0;
-    $batchSize = 250;
+    $batchSize = 1000;
     $batchValues = [];
     $batchParams = [];
 
@@ -179,7 +179,7 @@ try {
 
     $pdo->commit();
 
-} catch (Exception $e) {
+} catch (\Throwable $e) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
@@ -190,38 +190,25 @@ try {
 
 // 2. Generate Password-Locked Single-Sheet Excel Output
 try {
-    $exportRows = [];
-    // Header Row
-    $exportRows[] = [
-        'Owner Name',
-        'ID/Passport No',
-        'Date of Birth',
-        'Account Number',
-        'Last Transaction Date/Time',
-        'Due Amount',
-        'Compilation Date'
-    ];
-
-    foreach ($rows as $r) {
-        $exportRows[] = [
-            (string)($r['owner_name'] ?? ''),
-            (string)($r['id_passport_no'] ?? ''),
-            (string)($r['date_of_birth'] ?? ''),
-            (string)($r['account_number'] ?? ''),
-            (string)($r['last_transaction'] ?? ''),
-            (string)($r['due_amount'] ?? ''),
-            (string)($r['compilation_date'] ?? '')
-        ];
-    }
+    // Prepend header row directly to $rows to avoid duplicating 300,000 array elements in RAM
+    array_unshift($rows, [
+        'owner_name'       => 'Owner Name',
+        'id_passport_no'   => 'ID/Passport No',
+        'date_of_birth'    => 'Date of Birth',
+        'account_number'   => 'Account Number',
+        'last_transaction' => 'Last Transaction Date/Time',
+        'due_amount'       => 'Due Amount',
+        'compilation_date' => 'Compilation Date'
+    ]);
 
     $uploadDir = __DIR__ . '/../uploads/generated_submissions/';
     if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
+        @mkdir($uploadDir, 0755, true);
     }
 
     $targetPath = $uploadDir . $baseFileName;
 
-    $xlsx = SimpleXLSXGen::fromArray($exportRows, 'UFAA Submission');
+    $xlsx = SimpleXLSXGen::fromArray($rows, 'UFAA Submission');
     $xlsx->setProtectionPassword($protectionPassword);
     $xlsx->saveAs($targetPath);
 
@@ -237,7 +224,7 @@ try {
         'session_id'          => $sessionId
     ]);
 
-} catch (Exception $ex) {
+} catch (\Throwable $ex) {
     // Database committed, return success with warning about file generation
     echo json_encode([
         'status'              => 'success',

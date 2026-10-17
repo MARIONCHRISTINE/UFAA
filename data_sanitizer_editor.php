@@ -1496,11 +1496,18 @@ async function commitSanitizedUpload() {
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving to database…';
     try {
-        const res  = await fetch('ajax/commit_pre_submission.php', {
-            method:'POST', headers:{'Content-Type':'application/json'},
+        const res = await fetch('ajax/commit_pre_submission.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ draft_id: currentDraftId })
         });
-        const data = await res.json();
+        const text = await res.text();
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (jsonErr) {
+            throw new Error('Server returned invalid response: ' + (text ? text.substring(0, 300) : 'Empty server response'));
+        }
         if (data.status !== 'success') throw new Error(data.message || 'Submission failed');
 
         document.getElementById('success-modal-msg').textContent    = data.message;
