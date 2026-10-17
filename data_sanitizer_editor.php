@@ -158,6 +158,9 @@ require_once 'includes/layout.php';
             <button class="btn-reset" onclick="exportDraftExcel()" style="padding:.42rem .85rem; font-size:.82rem; border-radius:7px;">
                 <i class="fa-solid fa-file-export" style="color:#0369a1;"></i> Export Draft
             </button>
+            <button class="btn-reset" onclick="exportFilteredExcel()" id="btn-export-filter" style="padding:.42rem .85rem; font-size:.82rem; border-radius:7px; color:#0369a1; background:#e0f2fe; border:1px solid #bae6fd;">
+                <i class="fa-solid fa-filter"></i> Export Filter
+            </button>
             <button class="btn-reset" onclick="autoFixAllCompilationDates()" style="padding:.42rem .85rem; font-size:.82rem; border-radius:7px;">
                 <i class="fa-solid fa-wand-magic-sparkles" style="color:#6d28d9;"></i> Auto-Fix Dates
             </button>
@@ -311,7 +314,7 @@ require_once 'includes/layout.php';
             <button onclick="closeDuplicateInspectorModal()" class="btn-reset" style="padding:.3rem .6rem; border-radius:6px; font-size:.85rem;"><i class="fa-solid fa-xmark"></i></button>
         </div>
 
-        <div style="overflow-y:auto; flex:1; padding-right:4px;" id="duplicate-modal-content">
+        <div style="overflow-y:auto; flex:1; padding-right:4px; overscroll-behavior:contain; will-change:scroll-position;" id="duplicate-modal-content">
             <!-- Dynamic duplicate items injected here -->
         </div>
 
@@ -516,6 +519,19 @@ function setCardFilter(filterType) {
             duplicates: 'Filtered: Duplicate Conflicts Only'
         };
         ind.textContent = labels[filterType] || 'Showing All Rows';
+    }
+
+    // Update Export Filter button label to reflect current filter
+    const exportBtn = document.getElementById('btn-export-filter');
+    if (exportBtn) {
+        const exportLabels = {
+            all:        'Export All',
+            clean:      'Export Clean',
+            critical:   'Export Errors',
+            warnings:   'Export Warnings',
+            duplicates: 'Export Dups'
+        };
+        exportBtn.innerHTML = `<i class="fa-solid fa-filter"></i> ${exportLabels[filterType] || 'Export Filter'}`;
     }
 
     const tableWrap = document.getElementById('table-scroll-wrap');
@@ -902,7 +918,7 @@ function openDuplicateInspectorModal() {
                     <span><i class="fa-solid fa-copy"></i>&nbsp; In-File Sheet Conflicts &nbsp;<span style="background:#4338ca;color:#fff;border-radius:99px;padding:1px 9px;">${inFileDups.length}</span></span>
                     <span style="font-size:.72rem; font-weight:600; opacity:.8;">All 6 key fields are identical within this uploaded sheet</span>
                 </div>
-                <div style="overflow-x:auto; border-radius:9px; border:1.5px solid #c7d2fe; max-height:350px;">
+                <div style="overflow-x:auto; overflow-y:auto; border-radius:9px; border:1.5px solid #c7d2fe; max-height:350px; overscroll-behavior:contain; will-change:scroll-position;">
                     <table style="width:100%; border-collapse:collapse; font-size:.8rem;">
                         <thead style="position:sticky; top:0; z-index:5;">
                             <tr>
@@ -952,7 +968,7 @@ function openDuplicateInspectorModal() {
                     <span><i class="fa-solid fa-database"></i>&nbsp; Historical Database Matches &nbsp;<span style="background:#dc2626;color:#fff;border-radius:99px;padding:1px 9px;">${dbDups.length}</span></span>
                     <span style="font-size:.72rem; font-weight:600; opacity:.8;">All 6 key fields match historical records in the MySQL database</span>
                 </div>
-                <div style="overflow-x:auto; border-radius:9px; border:1.5px solid #fca5a5; max-height:350px;">
+                <div style="overflow-x:auto; overflow-y:auto; border-radius:9px; border:1.5px solid #fca5a5; max-height:350px; overscroll-behavior:contain; will-change:scroll-position;">
                     <table style="width:100%; border-collapse:collapse; font-size:.8rem;">
                         <thead style="position:sticky; top:0; z-index:5;">
                             <tr>
@@ -1297,7 +1313,11 @@ function renderVirtualRows(forceReset = false) {
             const dbTx      = dupDetail ? dupDetail.last_transaction : (r.last_transaction || '');
             const dbAmt     = dupDetail ? dupDetail.due_amount : (r.due_amount || '');
             const dbComp    = dupDetail ? dupDetail.compilation_date : (r.compilation_date || '');
-            const dbCreated = dupDetail ? (dupDetail.created_at || 'Previously Uploaded') : 'In-File Match';
+            const dbCreated = dupDetail
+                ? (dupDetail.type === 'database'
+                    ? (dupDetail.created_at || 'Previously Uploaded')
+                    : 'Same File')
+                : 'In-File Match';
 
             drawerHtml = `
             <tr style="background:#fff1f2;">
@@ -1364,8 +1384,11 @@ function renderVirtualRows(forceReset = false) {
             <td contenteditable="true" data-row="${globalRowIdx}" data-field="last_transaction" onblur="updateCell(${globalRowIdx},'last_transaction',this.innerText)" style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('last_transaction')}" title="${ct('last_transaction')}">${cellVal('last_transaction', r.last_transaction)}</td>
             <td contenteditable="true" data-row="${globalRowIdx}" data-field="due_amount"       onblur="updateCell(${globalRowIdx},'due_amount',this.innerText)"       style="padding:.45rem .65rem;text-align:right;font-weight:600;border-right:1px solid #f1f5f9;${cst('due_amount')}"       title="${ct('due_amount')}">${cellVal('due_amount', r.due_amount)}</td>
             <td contenteditable="true" data-row="${globalRowIdx}" data-field="compilation_date" onblur="updateCell(${globalRowIdx},'compilation_date',this.innerText)" style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('compilation_date')}" title="${ct('compilation_date')}">${cellVal('compilation_date', r.compilation_date)}</td>
-            <td style="padding:.45rem;text-align:center;">
-                <button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;"><i class="fa-solid fa-trash-can"></i></button>
+            <td style="padding:.45rem;text-align:center;white-space:nowrap;">
+                ${isDup && dupDetail && dupDetail.type === 'in_file'
+                    ? `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.68rem;color:#7c3aed;border:1px solid #ddd6fe;border-radius:4px;" title="Remove this duplicate, keep the other copy">Keep 1</button>`
+                    : `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;"><i class="fa-solid fa-trash-can"></i></button>`
+                }
             </td>
         </tr>
         ${drawerHtml}`;
@@ -1407,11 +1430,40 @@ async function updateCell(rowIdx, field, val) {
     }
 }
 
-function removeGridRow(idx) {
+async function removeGridRow(idx) {
     pushStateToHistory();
     gridRows.splice(idx, 1);
+
+    // Re-index duplicate details so row numbers stay correct after removal
+    latestDuplicateDetails = latestDuplicateDetails
+        .filter(d => d.row_num !== idx + 1 && !(d.type === 'in_file' && d.matched_with_row === idx + 1))
+        .map(d => ({
+            ...d,
+            row_num:          d.row_num          > idx + 1 ? d.row_num          - 1 : d.row_num,
+            matched_with_row: d.matched_with_row > idx + 1 ? d.matched_with_row - 1 : d.matched_with_row
+        }));
+
+    // Remove from expanded drawers set (re-map indices)
+    const newExpanded = new Set();
+    expandedDrawers.forEach(i => { if (i !== idx) newExpanded.add(i > idx ? i - 1 : i); });
+    expandedDrawers = newExpanded;
+
+    // Persist deletion immediately via API (real-time, no reload needed)
+    if (currentDraftId) {
+        try {
+            await fetch('ajax/sandbox_draft_api.php?action=delete_row', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ draft_id: currentDraftId, row_index: idx })
+            });
+        } catch (e) {
+            // If API call fails, fall back to full save
+            saveInitialDraft();
+            return;
+        }
+    }
+
     validateGrid();
-    saveInitialDraft();
 }
 
 /* ─── Date fix ─────────────────────────────────────────── */
@@ -1487,6 +1539,93 @@ function exportDraftExcel() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Draft');
     XLSX.writeFile(wb, `UFAA_Draft_${new Date().toISOString().split('T')[0]}.xlsx`);
+}
+
+/* ─── Export Current Filter ─────────────────────────────── */
+function exportFilteredExcel() {
+    if (!filteredRowIndices.length) {
+        alert('No rows match the current filter to export.');
+        return;
+    }
+
+    const filterLabel = {
+        all:        'All',
+        clean:      'Clean',
+        critical:   'Errors',
+        warnings:   'Warnings',
+        duplicates: 'Duplicates'
+    }[currentCardFilter] || currentCardFilter;
+
+    const isDupExport = (currentCardFilter === 'duplicates');
+    const exportRows  = [];
+    const dateStr     = new Date().toISOString().split('T')[0];
+
+    filteredRowIndices.forEach(globalIdx => {
+        const r      = gridRows[globalIdx];
+        const rowNum = globalIdx + 1;
+        if (!r) return;
+
+        const baseRow = {
+            'Row #':             rowNum,
+            'Owner Name':        r.owner_name        || '',
+            'ID / Passport No':  r.id_passport_no    || '',
+            'Date of Birth':     r.date_of_birth     || '',
+            'Account Number':    r.account_number    || '',
+            'Last Transaction':  r.last_transaction  || '',
+            'Due Amount (KES)':  r.due_amount        || '',
+            'Compilation Date':  r.compilation_date  || ''
+        };
+
+        // For errors and warnings exports, include the issue description
+        if (currentCardFilter === 'critical' || currentCardFilter === 'warnings') {
+            const issues = [];
+            const src    = currentCardFilter === 'critical' ? (r.errors || {}) : (r.warnings || {});
+            Object.entries(src).forEach(([field, msg]) => issues.push(`[${field}] ${msg}`));
+            baseRow['Issues'] = issues.join(' | ');
+        }
+
+        if (isDupExport) {
+            const dupDetail = latestDuplicateDetails.find(
+                d => d.row_num === rowNum || (d.type === 'in_file' && d.matched_with_row === rowNum)
+            );
+
+            if (dupDetail) {
+                const isDb = dupDetail.type === 'database';
+                baseRow['Duplicate Type']         = isDb ? 'DB Duplicate' : 'In-File Duplicate';
+                baseRow['Matched With']            = isDb
+                    ? `DB Record #${dupDetail.db_id} (${dupDetail.db_owner_name || ''})`
+                    : `Row #${dupDetail.matched_with_row === rowNum ? dupDetail.row_num : dupDetail.matched_with_row}`;
+
+                // Original / matched record columns
+                baseRow['[ORIGINAL] Owner Name']       = dupDetail.db_owner_name  || dupDetail.owner_name       || '';
+                baseRow['[ORIGINAL] ID / Passport No'] = dupDetail.id_passport_no  || '';
+                baseRow['[ORIGINAL] Date of Birth']    = dupDetail.date_of_birth   || '';
+                baseRow['[ORIGINAL] Account Number']   = dupDetail.account_number  || '';
+                baseRow['[ORIGINAL] Last Transaction'] = dupDetail.last_transaction || '';
+                baseRow['[ORIGINAL] Due Amount (KES)'] = dupDetail.due_amount      || '';
+                baseRow['[ORIGINAL] Compilation Date'] = dupDetail.compilation_date || '';
+                baseRow['[ORIGINAL] Uploaded / Source']= isDb
+                    ? (dupDetail.created_at || 'Previously Uploaded')
+                    : 'Same File';
+            } else {
+                // Flagged as dup by error message but no detail (edge case)
+                baseRow['Duplicate Type'] = 'Duplicate';
+                baseRow['Matched With']   = r.errors?.account_number || '';
+            }
+        }
+
+        exportRows.push(baseRow);
+    });
+
+    if (!exportRows.length) {
+        alert('No data to export for the current filter.');
+        return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, filterLabel);
+    XLSX.writeFile(wb, `UFAA_${filterLabel}_${dateStr}.xlsx`);
 }
 
 /* ─── Commit ───────────────────────────────────────────── */

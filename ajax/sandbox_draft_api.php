@@ -386,6 +386,49 @@ try {
         exit;
     }
 
+    /* DELETE_ROW (Remove a single row, real-time) ───────── */
+    if ($action === 'delete_row') {
+        $draftId = (int)($data['draft_id'] ?? 0);
+        $rowIdx  = isset($data['row_index']) ? (int)$data['row_index'] : -1;
+
+        if (!$draftId || $rowIdx < 0) {
+            if (ob_get_length()) ob_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'message' => 'Invalid delete_row parameters']);
+            exit;
+        }
+
+        $stmt = $pdo->prepare("SELECT `rows_data` FROM `sandbox_drafts` WHERE `id` = ? AND `status` = 'active'");
+        $stmt->execute([$draftId]);
+        $draft = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$draft) {
+            if (ob_get_length()) ob_clean();
+            header('Content-Type: application/json');
+            echo json_encode(['status' => 'error', 'message' => 'Draft not found']);
+            exit;
+        }
+
+        $rows = fetchDraftRows($draftId, $draft['rows_data'] ?? '');
+        if (isset($rows[$rowIdx])) {
+            array_splice($rows, $rowIdx, 1);
+            storeDraftRowsOnDisk($draftId, $rows);
+
+            $totalRows   = count($rows);
+            $rowsDataForDb = ($totalRows > 0)
+                ? ('[file_stored:' . $totalRows . ']')
+                : '[]';
+
+            $pdo->prepare("UPDATE `sandbox_drafts` SET `rows_data` = ?, `last_edited_by` = ?, `updated_at` = NOW() WHERE `id` = ?")
+                ->execute([$rowsDataForDb, $currentUser, $draftId]);
+        }
+
+        if (ob_get_length()) ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode(['status' => 'success', 'total_rows' => count($rows)]);
+        exit;
+    }
+
+
     /* SAVE_CHUNK (Safe Upload for Up to 500k Rows) ──────── */
     if ($action === 'save_chunk') {
         $draftId     = (int)($data['draft_id'] ?? 0);
