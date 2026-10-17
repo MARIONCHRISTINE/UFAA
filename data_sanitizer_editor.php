@@ -283,6 +283,38 @@ require_once 'includes/layout.php';
         </button>
     </div>
 
+    <!-- Bulk Duplicate Actions Bar (Visible under Duplicates filter) -->
+    <div id="duplicate-bulk-bar"
+        style="display:none; background:#faf5ff; border:1.5px solid #d8b4fe; border-radius:10px; padding:.75rem 1.1rem; margin-bottom:1rem; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem; box-shadow:0 2px 6px rgba(109,40,217,0.06);">
+        <div style="display:flex; align-items:center; gap:.65rem;">
+            <span style="background:#6d28d9; color:#fff; font-size:.78rem; font-weight:800; padding:3px 9px; border-radius:6px; display:inline-flex; align-items:center; gap:.4rem;">
+                <i class="fa-solid fa-layer-group"></i> Duplicate Actions
+            </span>
+            <span style="font-size:.8rem; font-weight:700; color:#581c87;">
+                One-click duplicate resolution for the entire file:
+            </span>
+        </div>
+        <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;">
+            <!-- Left Side: Leave 1 for In-File Duplicates -->
+            <button id="btn-bulk-leave-one" onclick="bulkLeaveOneAllInFile()" class="btn-reset"
+                style="padding:.45rem .95rem; font-size:.8rem; font-weight:700; color:#4338ca; background:#ede9fe; border:1.5px solid #a5b4fc; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:.45rem; transition:all .15s ease;"
+                title="Leave 1 record for every in-file duplicate group and delete all extra duplicate copies">
+                <i class="fa-solid fa-copy"></i>
+                <span>Leave 1 (All In-File)</span>
+                <span id="badge-bulk-leave-one" style="background:#4338ca; color:#fff; font-size:.7rem; font-weight:800; padding:1px 6px; border-radius:99px;">0</span>
+            </button>
+
+            <!-- Right Side: Delete All DB Matches -->
+            <button id="btn-bulk-delete-db" onclick="bulkDeleteAllDbDuplicates()" class="btn-reset"
+                style="padding:.45rem .95rem; font-size:.8rem; font-weight:700; color:#dc2626; background:#fee2e2; border:1.5px solid #fca5a5; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:.45rem; transition:all .15s ease;"
+                title="Delete all records matching existing database records">
+                <i class="fa-solid fa-trash-can"></i>
+                <span>Delete All (DB Matches)</span>
+                <span id="badge-bulk-delete-db" style="background:#dc2626; color:#fff; font-size:.7rem; font-weight:800; padding:1px 6px; border-radius:99px;">0</span>
+            </button>
+        </div>
+    </div>
+
     <!-- Grid Table -->
     <div
         style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
@@ -715,6 +747,12 @@ require_once 'includes/layout.php';
         const tableWrap = document.getElementById('table-scroll-wrap');
         if (tableWrap) tableWrap.scrollTop = 0;
 
+        // Toggle duplicate quick bulk bar
+        const bulkBar = document.getElementById('duplicate-bulk-bar');
+        if (bulkBar) {
+            bulkBar.style.display = (filterType === 'duplicates') ? 'flex' : 'none';
+        }
+
         renderGridTable();
     }
 
@@ -852,8 +890,10 @@ require_once 'includes/layout.php';
     }
 
     function pushStateToHistory() {
-        undoStack.push(JSON.parse(JSON.stringify(gridRows)));
-        if (undoStack.length > 20) undoStack.shift();
+        // High-performance snapshot: shallow copy array of row references
+        // Prevents multi-gigabyte JSON serialization and heap churn that freezes the browser on repeated deletes
+        undoStack.push(gridRows.slice());
+        if (undoStack.length > 10) undoStack.shift();
         redoStack = [];
     }
 
@@ -862,11 +902,11 @@ require_once 'includes/layout.php';
             showStatusNotice('Nothing to undo');
             return;
         }
-        redoStack.push(JSON.parse(JSON.stringify(gridRows)));
+        redoStack.push(gridRows.slice());
         gridRows = undoStack.pop();
         rebuildDuplicateIndex();
-        validateGrid();
-        saveInitialDraft();
+        updateOptimisticSummary();
+        renderGridTable();
         showStatusNotice('↺ Undone');
     }
 
@@ -875,11 +915,11 @@ require_once 'includes/layout.php';
             showStatusNotice('Nothing to redo');
             return;
         }
-        undoStack.push(JSON.parse(JSON.stringify(gridRows)));
+        undoStack.push(gridRows.slice());
         gridRows = redoStack.pop();
         rebuildDuplicateIndex();
-        validateGrid();
-        saveInitialDraft();
+        updateOptimisticSummary();
+        renderGridTable();
         showStatusNotice('↻ Redone');
     }
 
@@ -1368,7 +1408,24 @@ require_once 'includes/layout.php';
             }
             grp.push(i);
 
-            const dbDet = dbDuplicateDetailsMap.get(k) || null;
+            let dbDet = dbDuplicateDetailsMap.get(k) || null;
+            if (!dbDet && r.errors && r.errors.account_number &&
+                (r.errors.account_number.includes('DB Duplicate') || r.errors.account_number.includes('MySQL Record') || r.errors.account_number.toLowerCase().includes('database'))) {
+                const m = r.errors.account_number.match(/MySQL Record #(\d+)(?:\s*\((.*?)\))?/i);
+                dbDet = {
+                    type: 'database',
+                    db_id: m ? m[1] : 'DB',
+                    db_owner_name: m && m[2] ? m[2] : r.owner_name,
+                    owner_name: r.owner_name,
+                    id_passport_no: r.id_passport_no,
+                    date_of_birth: r.date_of_birth,
+                    account_number: r.account_number,
+                    last_transaction: r.last_transaction,
+                    due_amount: r.due_amount,
+                    compilation_date: r.compilation_date,
+                    created_at: 'Database Record'
+                };
+            }
             cachedRowToDbDetail[i] = dbDet;
             if (dbDet) cachedDbDupCount++;
         }
@@ -1484,15 +1541,17 @@ require_once 'includes/layout.php';
                 const hasInFileCopies = copies && copies.length > 0;
                 const dbMatch = cachedRowToDbDetail[i];
 
-                if (hasInFileCopies) {
-                    // Scenario 2: In-file duplicate -> show ONLY the first representative row
+                // DB match ALWAYS takes priority — show every DB duplicate row individually.
+                // Only collapse to 1 representative when it is a PURE in-file dup (no DB match).
+                if (dbMatch) {
+                    // Scenario 1: Duplicate from database → show each row (needs individual Delete)
+                    filteredRowIndices.push(i);
+                } else if (hasInFileCopies) {
+                    // Scenario 2: Pure in-file duplicate → show ONLY the first representative row
                     if (!seenInFileKeys.has(k)) {
                         seenInFileKeys.add(k);
                         filteredRowIndices.push(i);
                     }
-                } else if (dbMatch) {
-                    // Scenario 1: Duplicate from database
-                    filteredRowIndices.push(i);
                 } else {
                     const hasDupErr = r.errors && r.errors.account_number && r.errors.account_number.toLowerCase().includes('duplicate');
                     if (hasDupErr) filteredRowIndices.push(i);
@@ -1583,14 +1642,66 @@ require_once 'includes/layout.php';
             const inFileCopies = cachedRowToCopies[globalRowIdx] || [];
             const isRepresentativeInFile = (inFileCopies.length > 0);
             const dbDetail = cachedRowToDbDetail[globalRowIdx] || null;
-            const isDbDup = !isRepresentativeInFile && !!dbDetail;
-            const isDup = isRepresentativeInFile || isDbDup || (err.account_number && err.account_number.toLowerCase().includes('duplicate'));
+            // isDbDup: true whenever there is a DB match, even if this row also has in-file copies.
+            // DB status always wins — this is what causes the filter and card to agree.
+            const isDbDup = !!dbDetail;
+            // isOnlyInFileDup: has in-file copies but is NOT a DB duplicate
+            const isOnlyInFileDup = isRepresentativeInFile && !isDbDup;
+            const isDup = isDbDup || isRepresentativeInFile || (err.account_number && err.account_number.toLowerCase().includes('duplicate'));
             const isDrawerOpen = expandedDrawers.has(globalRowIdx);
 
             let drawerHtml = '';
             if (isDup && isDrawerOpen) {
-                if (isRepresentativeInFile) {
-                    // Drawer for Scenario 2: Duplicate in same file ("Found on Same File")
+                if (isDbDup) {
+                    // Drawer: Duplicate from database ("Found in Database")
+                    drawerHtml = `
+                    <tr style="background:#fff1f2;">
+                        <td colspan="9" style="padding:.65rem .85rem; border-bottom:2px solid #fca5a5;">
+                            <div style="background:#fff; border:1px solid #fca5a5; border-radius:9px; padding:.65rem .85rem; box-shadow:0 2px 8px rgba(220,38,38,0.08);">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; padding-bottom:.35rem; border-bottom:1px dashed #fca5a5;">
+                                    <div style="display:flex; align-items:center; gap:.6rem;">
+                                        <span style="background:#dc2626; color:#fff; font-size:.68rem; font-weight:800; padding:2px 7px; border-radius:5px;">
+                                            <i class="fa-solid fa-database"></i> Found in Database
+                                        </span>
+                                        <span style="font-size:.78rem; font-weight:700; color:#991b1b;">
+                                            Original Entry Stored in Database &middot; Record #${escHtml(dbDetail.db_id)}
+                                        </span>
+                                    </div>
+                                    <span style="font-size:.72rem; color:#64748b;"><i class="fa-solid fa-clock"></i> Uploaded: ${escHtml(dbDetail.created_at || 'Previously Uploaded')}</span>
+                                </div>
+                                <div style="overflow-x:auto;">
+                                    <table style="width:100%; border-collapse:collapse; font-size:.78rem;">
+                                        <thead>
+                                            <tr style="background:#fef2f2; color:#991b1b; font-weight:700; text-transform:uppercase; font-size:.65rem;">
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Original Source</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Owner Name</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">ID / Passport No</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Date of Birth</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Account Number</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Last Transaction</th>
+                                                <th style="padding:.4rem .6rem; text-align:right; border:1px solid #fecaca;">Due Amount (KES)</th>
+                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Compilation Date</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr style="background:#fff5f5; font-weight:600;">
+                                                <td style="padding:.4rem .6rem; font-weight:800; color:#991b1b; border:1px solid #fecaca;">DB Record #${escHtml(dbDetail.db_id)}</td>
+                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDetail.db_owner_name || dbDetail.owner_name)}</td>
+                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDetail.id_passport_no)}</td>
+                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDetail.date_of_birth)}</td>
+                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b; font-weight:700;">${escHtml(dbDetail.account_number)}</td>
+                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDetail.last_transaction)}</td>
+                                                <td style="padding:.4rem .6rem; text-align:right; border:1px solid #fecaca; color:#991b1b; font-weight:700;">${escHtml(dbDetail.due_amount)}</td>
+                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDetail.compilation_date)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>`;
+                } else if (isOnlyInFileDup) {
+                    // Drawer: Pure in-file duplicate ("Found on Same File")
                     const copiesRowsHtml = inFileCopies.map(copyIdx => {
                         const cr = gridRows[copyIdx] || {};
                         return `
@@ -1645,56 +1756,6 @@ require_once 'includes/layout.php';
                             </div>
                         </td>
                     </tr>`;
-                } else if (dbDetail) {
-                    // Drawer for Scenario 1: Duplicate from database ("Found in Database")
-                    drawerHtml = `
-                    <tr style="background:#fff1f2;">
-                        <td colspan="9" style="padding:.65rem .85rem; border-bottom:2px solid #fca5a5;">
-                            <div style="background:#fff; border:1px solid #fca5a5; border-radius:9px; padding:.65rem .85rem; box-shadow:0 2px 8px rgba(220,38,38,0.08);">
-                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; padding-bottom:.35rem; border-bottom:1px dashed #fca5a5;">
-                                    <div style="display:flex; align-items:center; gap:.6rem;">
-                                        <span style="background:#dc2626; color:#fff; font-size:.68rem; font-weight:800; padding:2px 7px; border-radius:5px;">
-                                            <i class="fa-solid fa-database"></i> Found in Database
-                                        </span>
-                                        <span style="font-size:.78rem; font-weight:700; color:#991b1b;">
-                                            Original Entry Stored in Database · Record #${escHtml(dbDetail.db_id)}
-                                        </span>
-                                    </div>
-                                    <span style="font-size:.72rem; color:#64748b;"><i class="fa-solid fa-clock"></i> Uploaded: ${escHtml(dbDetail.created_at || 'Previously Uploaded')}</span>
-                                </div>
-                                <div style="overflow-x:auto;">
-                                    <table style="width:100%; border-collapse:collapse; font-size:.78rem;">
-                                        <thead>
-                                            <tr style="background:#fef2f2; color:#991b1b; font-weight:700; text-transform:uppercase; font-size:.65rem;">
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Original Source</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Owner Name</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">ID / Passport No</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Date of Birth</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Account Number</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Last Transaction</th>
-                                                <th style="padding:.4rem .6rem; text-align:right; border:1px solid #fecaca;">Due Amount (KES)</th>
-                                                <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Compilation Date</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <tr style="background:#fff5f5; font-weight:600;">
-                                                <td style="padding:.4rem .6rem; font-weight:800; color:#991b1b; border:1px solid #fecaca;">
-                                                    Original DB Record #${escHtml(dbDetail.db_id)}
-                                                </td>
-                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDetail.db_owner_name || dbDetail.owner_name)}</td>
-                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDetail.id_passport_no)}</td>
-                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDetail.date_of_birth)}</td>
-                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b; font-weight:700;">${escHtml(dbDetail.account_number)}</td>
-                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDetail.last_transaction)}</td>
-                                                <td style="padding:.4rem .6rem; text-align:right; border:1px solid #fecaca; color:#991b1b; font-weight:700;">${escHtml(dbDetail.due_amount)}</td>
-                                                <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDetail.compilation_date)}</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </td>
-                    </tr>`;
                 }
             }
 
@@ -1703,7 +1764,7 @@ require_once 'includes/layout.php';
             <td style="padding:.45rem .4rem;text-align:center;font-weight:700;color:#94a3b8;font-size:.75rem;border-right:1px solid #f1f5f9;white-space:nowrap;">
                 ${rowNum}
                 ${isDup ? `
-                    <button onclick="toggleDuplicateDrawer(${globalRowIdx})" class="btn-reset" style="margin-left:4px; padding:1px 5px; font-size:.7rem; color:${isRepresentativeInFile ? '#4338ca' : '#dc2626'}; border:1px solid ${isRepresentativeInFile ? '#c7d2fe' : '#fca5a5'}; background:#fff; border-radius:4px; cursor:pointer; vertical-align:middle;" title="Click to show/hide duplicate details">
+                    <button onclick="toggleDuplicateDrawer(${globalRowIdx})" class="btn-reset" style="margin-left:4px; padding:1px 5px; font-size:.7rem; color:${isDbDup ? '#dc2626' : '#4338ca'}; border:1px solid ${isDbDup ? '#fca5a5' : '#c7d2fe'}; background:#fff; border-radius:4px; cursor:pointer; vertical-align:middle;" title="Click to show/hide duplicate details">
                         <i class="fa-solid ${isDrawerOpen ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>
                     </button>
                 ` : ''}
@@ -1716,9 +1777,11 @@ require_once 'includes/layout.php';
             <td contenteditable="true" data-row="${globalRowIdx}" data-field="due_amount"       onblur="updateCell(${globalRowIdx},'due_amount',this.innerText)"       style="padding:.45rem .65rem;text-align:right;font-weight:600;border-right:1px solid #f1f5f9;${cst('due_amount')}"       title="${ct('due_amount')}">${cellVal('due_amount', r.due_amount)}</td>
             <td contenteditable="true" data-row="${globalRowIdx}" data-field="compilation_date" onblur="updateCell(${globalRowIdx},'compilation_date',this.innerText)" style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('compilation_date')}" title="${ct('compilation_date')}">${cellVal('compilation_date', r.compilation_date)}</td>
             <td style="padding:.45rem;text-align:center;white-space:nowrap;">
-                ${isRepresentativeInFile
-                    ? `<button onclick="leaveOneDuplicateRow(${globalRowIdx})" class="btn-reset" style="padding:.22rem .55rem;font-size:.7rem;font-weight:700;color:#6d28d9;background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;" title="Leave 1 record and remove all other duplicate copies">Leave 1</button>`
-                    : `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;" title="Delete this record"><i class="fa-solid fa-trash-can"></i></button>`
+                ${isDbDup
+                    ? `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;" title="Delete this DB-duplicate record"><i class="fa-solid fa-trash-can"></i></button>`
+                    : isOnlyInFileDup
+                        ? `<button onclick="leaveOneDuplicateRow(${globalRowIdx})" class="btn-reset" style="padding:.22rem .55rem;font-size:.7rem;font-weight:700;color:#6d28d9;background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;" title="Leave 1 record and remove all other duplicate copies">Leave 1</button>`
+                        : `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;" title="Delete this record"><i class="fa-solid fa-trash-can"></i></button>`
                 }
             </td>
         </tr>
@@ -1756,7 +1819,27 @@ require_once 'includes/layout.php';
             if (!hasCritical && !hasWarnings) clean++;
         }
 
-        const dupCount = cachedInFileDupCount + cachedDbDupCount;
+        // Compute dupCount using IDENTICAL logic as computeFilteredIndices('duplicates')
+        // so the card always matches the actual number of rows shown in the filter.
+        let dupCount = 0;
+        const seenDupKeys = new Set();
+        for (let i = 0; i < total; i++) {
+            const dbMatch = cachedRowToDbDetail[i];
+            const copies = cachedRowToCopies[i];
+            const hasInFileCopies = copies && copies.length > 0;
+            const rk = gridRows[i]._key;
+            if (dbMatch) {
+                dupCount++;
+            } else if (hasInFileCopies && rk && !seenDupKeys.has(rk)) {
+                seenDupKeys.add(rk);
+                dupCount++;
+            } else {
+                const rr = gridRows[i];
+                const hasDupErr = rr.errors && rr.errors.account_number &&
+                    rr.errors.account_number.toLowerCase().includes('duplicate');
+                if (hasDupErr) dupCount++;
+            }
+        }
 
         const totalEl = document.getElementById('summary-total');
         const cleanEl = document.getElementById('summary-clean');
@@ -1769,6 +1852,26 @@ require_once 'includes/layout.php';
         if (critEl) critEl.textContent = critical.toLocaleString();
         if (warnEl) warnEl.textContent = warnings.toLocaleString();
         if (dupEl) dupEl.textContent = dupCount.toLocaleString();
+
+        // Update bulk duplicate action bar badges and disabled states
+        const badgeLeaveOne = document.getElementById('badge-bulk-leave-one');
+        const badgeDeleteDb = document.getElementById('badge-bulk-delete-db');
+        const btnLeaveOne = document.getElementById('btn-bulk-leave-one');
+        const btnDeleteDb = document.getElementById('btn-bulk-delete-db');
+
+        if (badgeLeaveOne) badgeLeaveOne.textContent = cachedInFileDupCount.toLocaleString();
+        if (badgeDeleteDb) badgeDeleteDb.textContent = cachedDbDupCount.toLocaleString();
+
+        if (btnLeaveOne) {
+            btnLeaveOne.disabled = (cachedInFileDupCount === 0);
+            btnLeaveOne.style.opacity = (cachedInFileDupCount === 0) ? '0.45' : '1';
+            btnLeaveOne.style.cursor = (cachedInFileDupCount === 0) ? 'not-allowed' : 'pointer';
+        }
+        if (btnDeleteDb) {
+            btnDeleteDb.disabled = (cachedDbDupCount === 0);
+            btnDeleteDb.style.opacity = (cachedDbDupCount === 0) ? '0.45' : '1';
+            btnDeleteDb.style.cursor = (cachedDbDupCount === 0) ? 'not-allowed' : 'pointer';
+        }
     }
 
     /* ─── Leave 1 Duplicate in Same File (Instant Disappearance) ── */
@@ -1832,11 +1935,132 @@ require_once 'includes/layout.php';
                     body: JSON.stringify({ draft_id: currentDraftId, row_indices: toRemoveIndices })
                 });
             } catch (e) {
-                saveInitialDraft();
+                console.error('Error persisting delete_rows:', e);
             }
         }
     }
     const keepOneDuplicateRow = leaveOneDuplicateRow; // Backward compatibility alias
+
+    /* ─── Bulk Action: Leave 1 for All In-File Duplicate Groups ── */
+    async function bulkLeaveOneAllInFile() {
+        if (cachedInFileDupCount === 0) {
+            alert('No in-file duplicate copies to remove.');
+            return;
+        }
+
+        const confirmMsg = `Keep 1 record for each duplicate group and remove all ${cachedInFileDupCount.toLocaleString()} duplicate copy row(s) from this file?`;
+        if (!confirm(confirmMsg)) return;
+
+        pushStateToHistory();
+
+        // Collect all duplicate copy row indices (keeping the first row of each group)
+        const toRemoveIndices = [];
+        for (const [key, grp] of cachedInFileGroups.entries()) {
+            if (grp && grp.length > 1) {
+                for (let k = 1; k < grp.length; k++) {
+                    toRemoveIndices.push(grp[k]);
+                }
+            }
+        }
+
+        if (toRemoveIndices.length === 0) return;
+
+        // Sort descending so splicing from bottom does not disturb preceding indices
+        toRemoveIndices.sort((a, b) => b - a);
+
+        // Splice all copy rows from memory immediately
+        toRemoveIndices.forEach(idx => {
+            gridRows.splice(idx, 1);
+        });
+
+        // Clear in-file duplicate errors from all remaining rows
+        for (let i = 0; i < gridRows.length; i++) {
+            const r = gridRows[i];
+            if (r.errors && r.errors.account_number && r.errors.account_number.includes('In-File Duplicate')) {
+                delete r.errors.account_number;
+                r.has_critical = Object.keys(r.errors).length > 0;
+                r.is_clean = !r.has_critical && (!r.warnings || Object.keys(r.warnings).length === 0);
+            }
+        }
+
+        // Clean up latestDuplicateDetails
+        latestDuplicateDetails = latestDuplicateDetails.filter(d => d.type !== 'in_file');
+        expandedDrawers.clear();
+
+        // Rebuild index and update UI immediately
+        rebuildDuplicateIndex();
+        updateOptimisticSummary();
+        renderGridTable();
+        showStatusNotice(`✓ Left 1 for all groups; removed ${toRemoveIndices.length.toLocaleString()} duplicate copies`);
+
+        // Persist batch deletions to server in background
+        if (currentDraftId) {
+            try {
+                await fetch('ajax/sandbox_draft_api.php?action=delete_rows', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ draft_id: currentDraftId, row_indices: toRemoveIndices })
+                });
+            } catch (e) {
+                console.error('Error persisting bulk in-file deletion:', e);
+            }
+        }
+    }
+
+    /* ─── Bulk Action: Delete All Database Matches ─────────────── */
+    async function bulkDeleteAllDbDuplicates() {
+        if (cachedDbDupCount === 0) {
+            alert('No database duplicate records to delete.');
+            return;
+        }
+
+        const confirmMsg = `Delete all ${cachedDbDupCount.toLocaleString()} record(s) matching database records?`;
+        if (!confirm(confirmMsg)) return;
+
+        pushStateToHistory();
+
+        // Collect all row indices that are DB duplicates
+        const toRemoveIndices = [];
+        for (let i = 0; i < gridRows.length; i++) {
+            if (cachedRowToDbDetail[i]) {
+                toRemoveIndices.push(i);
+            }
+        }
+
+        if (toRemoveIndices.length === 0) return;
+
+        // Sort descending so splicing from bottom does not disturb preceding indices
+        toRemoveIndices.sort((a, b) => b - a);
+
+        // Splice all DB duplicate rows from memory immediately
+        toRemoveIndices.forEach(idx => {
+            gridRows.splice(idx, 1);
+        });
+
+        // Clean up latestDuplicateDetails and dbDuplicateDetailsMap
+        latestDuplicateDetails = latestDuplicateDetails.filter(d => d.type !== 'database');
+        dbDuplicateDetailsMap.clear();
+        expandedDrawers.clear();
+
+        // Rebuild index and update UI immediately
+        rebuildDuplicateIndex();
+        updateOptimisticSummary();
+        renderGridTable();
+        showStatusNotice(`✓ Deleted ${toRemoveIndices.length.toLocaleString()} database duplicate records`);
+
+        // Persist batch deletions to server in background
+        if (currentDraftId) {
+            try {
+                await fetch('ajax/sandbox_draft_api.php?action=delete_rows', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ draft_id: currentDraftId, row_indices: toRemoveIndices })
+                });
+            } catch (e) {
+                console.error('Error persisting bulk DB duplicates deletion:', e);
+            }
+        }
+    }
 
     /* ─── Cell update ──────────────────────────────────────── */
     async function updateCell(rowIdx, field, val) {
@@ -1846,6 +2070,8 @@ require_once 'includes/layout.php';
 
         pushStateToHistory();
 
+        // Clone row object so previous history references remain untainted
+        gridRows[rowIdx] = { ...gridRows[rowIdx] };
         gridRows[rowIdx][field] = clean;
         gridRows[rowIdx]._key = make6FieldKey(gridRows[rowIdx]);
         rebuildDuplicateIndex();
@@ -1870,11 +2096,13 @@ require_once 'includes/layout.php';
         // Remove row from memory immediately
         gridRows.splice(idx, 1);
 
-        // If this row was a DB duplicate and no other rows have this key, clean up
-        const stillHasKey = gridRows.some(r => (r._key || make6FieldKey(r)) === key);
-        if (!stillHasKey) {
-            latestDuplicateDetails = latestDuplicateDetails.filter(d => make6FieldKey(d) !== key);
-            dbDuplicateDetailsMap.delete(key);
+        // Clean up maps and details if no other row has this key
+        if (key) {
+            const grp = cachedInFileGroups.get(key);
+            if (!grp || grp.length <= 1) {
+                latestDuplicateDetails = latestDuplicateDetails.filter(d => make6FieldKey(d) !== key);
+                dbDuplicateDetailsMap.delete(key);
+            }
         }
 
         // Remap expanded drawers
@@ -1886,7 +2114,7 @@ require_once 'includes/layout.php';
         rebuildDuplicateIndex();
 
         // If only 1 row remains in what was an in-file duplicate group, clear duplicate error
-        if (stillHasKey) {
+        if (key) {
             const grp = cachedInFileGroups.get(key);
             if (grp && grp.length === 1) {
                 const remRow = gridRows[grp[0]];
@@ -1915,7 +2143,7 @@ require_once 'includes/layout.php';
                     body: JSON.stringify({ draft_id: currentDraftId, row_index: idx })
                 });
             } catch (e) {
-                saveInitialDraft();
+                console.error('Failed to persist delete_row:', e);
             }
         }
     }
@@ -1934,10 +2162,14 @@ require_once 'includes/layout.php';
     function flexDate(s) {
         if (!s) return '';
         s = String(s).trim();
-        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-        const m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
-        if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
-        const d = new Date(s); return isNaN(d) ? s : d.toISOString().split('T')[0];
+        const ymd = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+        if (ymd) return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
+        const dmy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);
+        if (dmy) {
+            const yr = dmy[3].length === 2 ? ('20' + dmy[3]) : dmy[3];
+            return `${yr}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+        }
+        return s.toLowerCase();
     }
 
     /* ─── Save full draft ──────────────────────────────────── */
