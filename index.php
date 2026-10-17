@@ -258,10 +258,9 @@ if ($pdo) {
             <a href="download_template.php" class="btn-reset" style="text-decoration:none; padding:.55rem 1.1rem; font-size:.84rem; border-radius:9px; font-weight:600; display:inline-flex; align-items:center; gap:.45rem;">
                 <i class="fa-solid fa-download" style="color:var(--airtel-red);"></i> Download Template
             </a>
-            <button onclick="document.getElementById('home-file-input').click()" class="btn-filter" style="padding:.65rem 1.4rem; font-size:.875rem; font-weight:800; border-radius:9px; display:inline-flex; align-items:center; gap:.55rem; background:var(--airtel-red); color:#fff; box-shadow:0 4px 12px rgba(220,38,38,0.25);">
+            <a href="data_preparation.php?open_file=1" class="btn-filter" style="text-decoration:none; padding:.65rem 1.4rem; font-size:.875rem; font-weight:800; border-radius:9px; display:inline-flex; align-items:center; gap:.55rem; background:var(--airtel-red); color:#fff; box-shadow:0 4px 12px rgba(220,38,38,0.25);">
                 <i class="fa-solid fa-cloud-arrow-up"></i> Upload Data
-            </button>
-            <input type="file" id="home-file-input" accept=".xlsx,.xls,.csv" onchange="loadExcelAndRedirect(event)" style="display:none;">
+            </a>
         </div>
     </div>
 
@@ -506,90 +505,6 @@ if ($pdo) {
 
 <?php endif; ?>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script>
-function colIdx(headers, keywords) {
-    // 1. Exact match
-    for (const k of keywords) {
-        const exact = headers.findIndex(h => h === k);
-        if (exact >= 0) return exact;
-    }
-    // 2. Word boundary match
-    for (const k of keywords) {
-        const found = headers.findIndex(h => {
-            if (k.length <= 2) {
-                const re = new RegExp('(^|[^a-z0-9])' + k + '([^a-z0-9]|$)', 'i');
-                return re.test(h);
-            }
-            return h.includes(k);
-        });
-        if (found >= 0) return found;
-    }
-    return -1;
-}
 
-function loadExcelAndRedirect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async e => {
-        try {
-            const wb  = XLSX.read(new Uint8Array(e.target.result), { type:'array', cellDates:false });
-            const ws  = wb.Sheets[wb.SheetNames[0]];
-            const raw = XLSX.utils.sheet_to_json(ws, { header:1, defval:'', raw:false });
-            if (!raw || raw.length < 2) { alert('No data rows found in uploaded file.'); return; }
-
-            const hdrs = raw[0].map(h => String(h).trim().toLowerCase());
-            const col  = {
-                owner_name:       colIdx(hdrs, ['owner_name', 'holder_name', 'customer_name', 'full_name', 'owner', 'name', 'holder']),
-                id_passport_no:   colIdx(hdrs, ['passport', 'id_number', 'id_no', 'national_id', 'id_num', 'id']),
-                date_of_birth:    colIdx(hdrs, ['date_of_birth', 'birth_date', 'dob', 'birth']),
-                account_number:   colIdx(hdrs, ['account_number', 'account_no', 'acc_no', 'account', 'acct']),
-                last_transaction: colIdx(hdrs, ['last_transaction', 'transaction_date', 'last_tx_date', 'last_tx', 'transaction']),
-                due_amount:       colIdx(hdrs, ['due_amount', 'amount_due', 'amount', 'due', 'kes', 'balance', 'value']),
-                compilation_date: colIdx(hdrs, ['compilation_date', 'compiled_date', 'compilation', 'compiled', 'date_compiled'])
-            };
-
-            const parsedRows = [];
-            for (let i = 1; i < raw.length; i++) {
-                const r = raw[i];
-                if (!r || r.every(c => String(c).trim() === '')) continue;
-
-                const getC = (idx, fallback) => {
-                    const colToUse = idx >= 0 ? idx : fallback;
-                    return (colToUse >= 0 && r[colToUse] !== undefined && r[colToUse] !== null) ? String(r[colToUse]).trim() : '';
-                };
-                parsedRows.push({
-                    owner_name:       getC(col.owner_name, 0),
-                    id_passport_no:   getC(col.id_passport_no, 1),
-                    date_of_birth:    getC(col.date_of_birth, 2),
-                    account_number:   getC(col.account_number, 3),
-                    last_transaction: getC(col.last_transaction, 4),
-                    due_amount:       getC(col.due_amount, 5),
-                    compilation_date: getC(col.compilation_date, 6)
-                });
-            }
-
-            const res = await fetch('ajax/sandbox_draft_api.php?action=save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ draft_name: file.name, rows: parsedRows })
-            });
-
-            const data = await res.json();
-            if (data.status === 'success' && data.draft_id) {
-                window.location.href = `data_sanitizer_editor.php?draft_id=${data.draft_id}`;
-            } else {
-                throw new Error(data.message || 'Could not create workspace draft');
-            }
-
-        } catch (err) {
-            alert('Could not open file: ' + err.message);
-        }
-    };
-    reader.readAsArrayBuffer(file);
-}
-</script>
 
 <?php require_once 'includes/layout_footer.php'; ?>

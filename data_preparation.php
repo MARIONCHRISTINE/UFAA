@@ -104,11 +104,54 @@ require_once 'includes/layout.php';
 
 </div>
 
+<!-- Full-Page Blocking Overlay during Upload to Sanitizer -->
+<div id="upload-blocking-modal" style="display:none; position:fixed; inset:0; z-index:999999; background:rgba(15, 23, 42, 0.75); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:1.5rem;">
+    <div style="background:#fff; border-radius:18px; padding:2.5rem 2rem; max-width:520px; width:100%; text-align:center; box-shadow:0 25px 60px rgba(0,0,0,0.35); border:1px solid #e2e8f0;">
+        <div style="width:76px; height:76px; margin:0 auto 1.25rem; background:#fef2f2; border:2px solid var(--airtel-red); border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--airtel-red); font-size:2.2rem; box-shadow:0 8px 24px rgba(220,38,38,0.2);">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+        </div>
+        <h3 id="modal-upload-title" style="font-size:1.35rem; font-weight:800; color:var(--text-primary); margin:0 0 .4rem;">Uploading to Data Sanitizer</h3>
+        <p id="modal-upload-filename" style="font-size:.9rem; font-weight:700; color:#475569; word-break:break-all; margin:0 0 1.25rem;"></p>
+        
+        <!-- Progress Bar Container -->
+        <div style="background:#f1f5f9; border-radius:12px; height:12px; overflow:hidden; width:100%; margin-bottom:.85rem; border:1px solid #e2e8f0;">
+            <div id="modal-upload-progress-bar" style="background:linear-gradient(90deg, #dc2626, #ef4444); width:0%; height:100%; border-radius:12px; transition:width 0.25s ease;"></div>
+        </div>
+        
+        <p id="modal-upload-status" style="font-size:.95rem; font-weight:700; color:var(--airtel-red); margin:0 0 .35rem;">Reading worksheet rows…</p>
+        <p id="modal-upload-detail" style="font-size:.82rem; color:#64748b; margin:0 0 1.35rem;">Please wait while the file is structured and transferred.</p>
+
+        <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:.75rem 1rem; font-size:.82rem; color:#92400e; display:flex; align-items:center; gap:.65rem; text-align:left;">
+            <i class="fa-solid fa-lock" style="font-size:1.15rem; flex-shrink:0; color:#d97706;"></i>
+            <span><strong>Upload in progress:</strong> All tabs and buttons are locked until upload is complete. Please do not switch tabs, refresh, or close this window.</span>
+        </div>
+    </div>
+</div>
+
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         setupDragAndDrop();
         loadDraftList();
         startListAutoPoll();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('open_file') === '1') {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            const dropzone = document.getElementById('sanitizer-dropzone');
+            if (dropzone) {
+                dropzone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            const fileInput = document.getElementById('sanitizer-file-input');
+            if (fileInput) {
+                setTimeout(() => {
+                    try {
+                        fileInput.click();
+                    } catch (e) {
+                        console.warn('Auto file trigger blocked:', e);
+                    }
+                }, 150);
+            }
+        }
     });
 
     let listPollTimer = null;
@@ -243,6 +286,29 @@ require_once 'includes/layout.php';
         const file = event.target.files[0];
         if (!file) return;
 
+        // Block navigation / tab switching during upload
+        const beforeUnloadHandler = function (e) {
+            e.preventDefault();
+            e.returnValue = 'Upload is currently in progress. Leaving this page will abort the upload.';
+            return e.returnValue;
+        };
+        window.addEventListener('beforeunload', beforeUnloadHandler);
+
+        // Show Full Page Modal Overlay blocking all tabs & buttons
+        const modal = document.getElementById('upload-blocking-modal');
+        const modalFile = document.getElementById('modal-upload-filename');
+        const modalBar = document.getElementById('modal-upload-progress-bar');
+        const modalStatus = document.getElementById('modal-upload-status');
+        const modalDetail = document.getElementById('modal-upload-detail');
+
+        if (modal) {
+            if (modalFile) modalFile.textContent = file.name;
+            if (modalBar) modalBar.style.width = '5%';
+            if (modalStatus) modalStatus.textContent = 'Reading worksheet rows…';
+            if (modalDetail) modalDetail.textContent = 'Parsing Excel data structures…';
+            modal.style.display = 'flex';
+        }
+
         const dz = document.getElementById('sanitizer-dropzone');
         if (dz) {
             dz.style.pointerEvents = 'none';
@@ -259,11 +325,19 @@ require_once 'includes/layout.php';
         const reader = new FileReader();
         reader.onload = async e => {
             try {
+                if (modalBar) modalBar.style.width = '10%';
+                if (modalStatus) modalStatus.textContent = 'Parsing worksheet…';
+
                 const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: false });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 // raw: false ensures formatted text (cell.w) is preserved (e.g. leading zeros like 0712345678, exact date strings)
                 const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
-                if (!raw || raw.length < 2) { alert('No data rows found in uploaded file.'); return; }
+                if (!raw || raw.length < 2) { 
+                    window.removeEventListener('beforeunload', beforeUnloadHandler);
+                    if (modal) modal.style.display = 'none';
+                    alert('No data rows found in uploaded file.'); 
+                    return; 
+                }
 
                 const hdrs = raw[0].map(h => String(h).trim().toLowerCase());
                 const col = {
@@ -310,10 +384,16 @@ require_once 'includes/layout.php';
                     const end = Math.min(totalRows, start + CHUNK_SIZE);
                     const chunkRows = parsedRows.slice(start, end);
 
+                    const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100);
+                    const statusMsg = `Uploading chunk ${chunkIdx + 1} of ${totalChunks} (${pct}%)…`;
+                    const detailMsg = `${end.toLocaleString()} / ${totalRows.toLocaleString()} rows transferred`;
+
                     if (progressEl) {
-                        const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100);
-                        progressEl.textContent = `Uploading chunk ${chunkIdx + 1} of ${totalChunks} (${end.toLocaleString()} / ${totalRows.toLocaleString()} rows · ${pct}%)…`;
+                        progressEl.textContent = `${statusMsg} ${detailMsg}`;
                     }
+                    if (modalBar) modalBar.style.width = pct + '%';
+                    if (modalStatus) modalStatus.textContent = statusMsg;
+                    if (modalDetail) modalDetail.textContent = detailMsg;
 
                     const res = await fetch('ajax/sandbox_draft_api.php?action=save_chunk', {
                         method: 'POST',
@@ -336,11 +416,16 @@ require_once 'includes/layout.php';
 
                     if (data.is_final) {
                         if (progressEl) progressEl.textContent = 'Launching Web-Excel Editor…';
+                        if (modalStatus) modalStatus.textContent = 'Upload complete! Launching Web-Excel Editor…';
+                        if (modalBar) modalBar.style.width = '100%';
+                        window.removeEventListener('beforeunload', beforeUnloadHandler);
                         window.location.href = `data_sanitizer_editor.php?draft_id=${draftId}`;
                         return;
                     }
                 }
             } catch (err) {
+                window.removeEventListener('beforeunload', beforeUnloadHandler);
+                if (modal) modal.style.display = 'none';
                 alert('File processing error: ' + err.message);
                 window.location.reload();
             }

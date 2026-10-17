@@ -60,16 +60,26 @@ class SimpleZipWriter {
     public function addFile(string $filePath, string $name): bool {
         if (!$this->fp || !file_exists($filePath)) return false;
         $fileSize = filesize($filePath);
-        $crc = crc32_file($filePath);
 
-        // If file is moderate (under 25MB) and gzdeflate exists, compress it
-        if ($fileSize < 25 * 1024 * 1024 && function_exists('gzdeflate')) {
-            $content = file_get_contents($filePath);
-            $compData = gzdeflate($content, 6);
-            $compLen = strlen($compData);
-            $method = 8;
+        // PHP has no crc32_file(). Compute CRC32 manually.
+        // For files ≤ 25 MB we read once and can also compress in the same pass.
+        if ($fileSize < 25 * 1024 * 1024) {
+            $content  = file_get_contents($filePath);
+            $crc      = crc32($content);
+
+            if (function_exists('gzdeflate')) {
+                $compData = gzdeflate($content, 6);
+                $compLen  = strlen($compData);
+                $method   = 8;
+            } else {
+                $compData = $content;
+                $compLen  = $fileSize;
+                $method   = 0;
+            }
+            unset($content);
+
             $headerOffset = $this->offset;
-            $localHeader = pack(
+            $localHeader  = pack(
                 'VvvvVVVVvv',
                 0x04034b50, 20, 0, $method, 0, $crc, $compLen, $fileSize, strlen($name), 0
             ) . $name;
@@ -77,12 +87,26 @@ class SimpleZipWriter {
             fwrite($this->fp, $localHeader);
             fwrite($this->fp, $compData);
             $this->offset += strlen($localHeader) + $compLen;
-            unset($content, $compData);
+            unset($compData);
         } else {
-            // Stream directly from disk with ZERO memory overhead (method 0 = STORED)
+            // Large file: stream directly (STORED, method 0) and compute CRC on the fly
             $method = 0;
+            $crc    = 0xFFFFFFFF;
+            $src    = fopen($filePath, 'rb');
+            if ($src) {
+                while (!feof($src)) {
+                    $buf = fread($src, 65536);
+                    // PHP crc32() returns a signed int; XOR-accumulate manually
+                    for ($i = 0, $len = strlen($buf); $i < $len; $i++) {
+                        $crc = (($crc >> 8) & 0x00FFFFFF) ^ self::crcTable(($crc ^ ord($buf[$i])) & 0xFF);
+                    }
+                }
+                $crc = ~$crc & 0xFFFFFFFF;
+                fclose($src);
+            }
+
             $headerOffset = $this->offset;
-            $localHeader = pack(
+            $localHeader  = pack(
                 'VvvvVVVVvv',
                 0x04034b50, 20, 0, $method, 0, $crc, $fileSize, $fileSize, strlen($name), 0
             ) . $name;
@@ -94,6 +118,7 @@ class SimpleZipWriter {
                 fclose($src);
             }
             $this->offset += strlen($localHeader) + $fileSize;
+            $compLen = $fileSize;
         }
 
         $this->cd[] = [
@@ -106,6 +131,16 @@ class SimpleZipWriter {
         ];
         return true;
     }
+
+    /** CRC-32 table lookup — avoids loading the zlib CRC table */
+    protected static function crcTable(int $n): int {
+        $c = $n;
+        for ($k = 0; $k < 8; $k++) {
+            $c = ($c & 1) ? (0xEDB88320 ^ (($c >> 1) & 0x7FFFFFFF)) : (($c >> 1) & 0x7FFFFFFF);
+        }
+        return $c;
+    }
+
 
     public function close(): bool {
         if (!$this->fp) return false;
