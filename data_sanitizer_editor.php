@@ -663,6 +663,7 @@ require_once 'includes/layout.php';
             }
 
             applyOwnerPermissions();
+            rebuildDuplicateIndex();
             renderGridTable();
             validateGrid();
             startHeartbeat();
@@ -863,6 +864,7 @@ require_once 'includes/layout.php';
         }
         redoStack.push(JSON.parse(JSON.stringify(gridRows)));
         gridRows = undoStack.pop();
+        rebuildDuplicateIndex();
         validateGrid();
         saveInitialDraft();
         showStatusNotice('↺ Undone');
@@ -875,6 +877,7 @@ require_once 'includes/layout.php';
         }
         undoStack.push(JSON.parse(JSON.stringify(gridRows)));
         gridRows = redoStack.pop();
+        rebuildDuplicateIndex();
         validateGrid();
         saveInitialDraft();
         showStatusNotice('↻ Redone');
@@ -1333,35 +1336,72 @@ require_once 'includes/layout.php';
         return `${normId}|${normDob}|${normAcct}|${normTx}|${normAmt}|${normComp}`;
     }
 
-    function getInFileDuplicateGroups() {
-        const groups = {};
-        for (let i = 0; i < gridRows.length; i++) {
-            const k = make6FieldKey(gridRows[i]);
-            if (!k) continue;
-            if (!groups[k]) groups[k] = [];
-            groups[k].push(i);
+    /* ─── Ultra-Fast O(1) Duplicate Cache for Tens of Thousands of Rows ─── */
+    let cachedInFileGroups = new Map(); // key -> [rowIdx1, rowIdx2, ...]
+    let cachedRowToCopies = [];         // rowIdx -> [copyIdx1, copyIdx2, ...]
+    let cachedRowToDbDetail = [];       // rowIdx -> dbDetail or null
+    let cachedInFileDupCount = 0;
+    let cachedDbDupCount = 0;
+
+    function rebuildDuplicateIndex() {
+        cachedInFileGroups.clear();
+        const n = gridRows.length;
+        cachedRowToCopies = new Array(n);
+        cachedRowToDbDetail = new Array(n);
+        cachedInFileDupCount = 0;
+        cachedDbDupCount = 0;
+
+        // 1. Single linear pass: assign keys and group in Map
+        for (let i = 0; i < n; i++) {
+            const r = gridRows[i];
+            const k = make6FieldKey(r);
+            r._key = k;
+            if (!k) {
+                cachedRowToCopies[i] = [];
+                cachedRowToDbDetail[i] = null;
+                continue;
+            }
+            let grp = cachedInFileGroups.get(k);
+            if (!grp) {
+                grp = [];
+                cachedInFileGroups.set(k, grp);
+            }
+            grp.push(i);
+
+            const dbDet = dbDuplicateDetailsMap.get(k) || null;
+            cachedRowToDbDetail[i] = dbDet;
+            if (dbDet) cachedDbDupCount++;
         }
-        return groups;
+
+        // 2. Pre-link each row to its copies for instant O(1) rendering
+        for (let i = 0; i < n; i++) {
+            const k = gridRows[i]._key;
+            if (!k) {
+                cachedRowToCopies[i] = [];
+                continue;
+            }
+            const grp = cachedInFileGroups.get(k);
+            if (grp && grp.length > 1) {
+                cachedRowToCopies[i] = grp.filter(idx => idx !== i);
+            } else {
+                cachedRowToCopies[i] = [];
+            }
+        }
+
+        // 3. Count in-file duplicates (each extra row beyond 1 in group)
+        for (const grp of cachedInFileGroups.values()) {
+            if (grp.length > 1) {
+                cachedInFileDupCount += (grp.length - 1);
+            }
+        }
     }
 
     function getInFileCopies(rowIdx) {
-        const k = make6FieldKey(gridRows[rowIdx]);
-        if (!k) return [];
-        const groups = getInFileDuplicateGroups();
-        const grp = groups[k] || [];
-        if (grp.length <= 1) return [];
-        return grp.filter(i => i !== rowIdx);
+        return cachedRowToCopies[rowIdx] || [];
     }
 
     function getDatabaseDuplicateDetail(rowIdx) {
-        const r = gridRows[rowIdx];
-        if (!r) return null;
-        const k = make6FieldKey(r);
-        if (k && dbDuplicateDetailsMap.has(k)) {
-            return dbDuplicateDetailsMap.get(k);
-        }
-        const rowNum = rowIdx + 1;
-        return latestDuplicateDetails.find(d => d.type === 'database' && d.row_num === rowNum) || null;
+        return cachedRowToDbDetail[rowIdx] || null;
     }
 
     /* ─── High-Performance Server Validation ──────────────────── */
@@ -1412,6 +1452,7 @@ require_once 'includes/layout.php';
                 }
             }
 
+            rebuildDuplicateIndex();
             updateOptimisticSummary();
             renderGridTable();
             renderPresenceOverlay(activePresence);
@@ -1423,11 +1464,10 @@ require_once 'includes/layout.php';
         }
     }
 
-    /* ─── Grid Filter Computation ────────────────────────────── */
+    /* ─── Grid Filter Computation (Fast Linear Pass) ─────────── */
     function computeFilteredIndices() {
         filteredRowIndices = [];
         const total = gridRows.length;
-        const inFileGroups = getInFileDuplicateGroups();
         const seenInFileKeys = new Set();
 
         for (let i = 0; i < total; i++) {
@@ -1439,9 +1479,10 @@ require_once 'includes/layout.php';
             } else if (currentCardFilter === 'warnings') {
                 if (r.warnings && Object.keys(r.warnings).length > 0) filteredRowIndices.push(i);
             } else if (currentCardFilter === 'duplicates') {
-                const k = make6FieldKey(r);
-                const hasInFileCopies = k && inFileGroups[k] && inFileGroups[k].length > 1;
-                const hasDbMatch = k && (dbDuplicateDetailsMap.has(k) || !!getDatabaseDuplicateDetail(i));
+                const k = r._key || make6FieldKey(r);
+                const copies = cachedRowToCopies[i];
+                const hasInFileCopies = copies && copies.length > 0;
+                const dbMatch = cachedRowToDbDetail[i];
 
                 if (hasInFileCopies) {
                     // Scenario 2: In-file duplicate -> show ONLY the first representative row
@@ -1449,7 +1490,7 @@ require_once 'includes/layout.php';
                         seenInFileKeys.add(k);
                         filteredRowIndices.push(i);
                     }
-                } else if (hasDbMatch) {
+                } else if (dbMatch) {
                     // Scenario 1: Duplicate from database
                     filteredRowIndices.push(i);
                 } else {
@@ -1480,7 +1521,7 @@ require_once 'includes/layout.php';
         }
     }
 
-    /* ─── High-Performance Virtual Window Rendering ─────────── */
+    /* ─── High-Performance Virtual Window Rendering (O(1) Row Lookups) ─── */
     function renderVirtualRows(forceReset = false) {
         const tbody = document.getElementById('spreadsheet-tbody');
         const tableWrap = document.getElementById('table-scroll-wrap');
@@ -1514,7 +1555,7 @@ require_once 'includes/layout.php';
             html += `<tr style="height:${topSpacerHeight}px;"><td colspan="9" style="padding:0;border:none;background:transparent;"></td></tr>`;
         }
 
-        // Render viewport visible rows
+        // Render viewport visible rows (0ms O(1) lookups)
         for (let pIdx = startInPage; pIdx < endInPage; pIdx++) {
             const globalRowIdx = filteredRowIndices[pageStartIndex + pIdx];
             const r = gridRows[globalRowIdx];
@@ -1539,9 +1580,9 @@ require_once 'includes/layout.php';
                 return '';
             };
 
-            const inFileCopies = getInFileCopies(globalRowIdx);
+            const inFileCopies = cachedRowToCopies[globalRowIdx] || [];
             const isRepresentativeInFile = (inFileCopies.length > 0);
-            const dbDetail = getDatabaseDuplicateDetail(globalRowIdx);
+            const dbDetail = cachedRowToDbDetail[globalRowIdx] || null;
             const isDbDup = !isRepresentativeInFile && !!dbDetail;
             const isDup = isRepresentativeInFile || isDbDup || (err.account_number && err.account_number.toLowerCase().includes('duplicate'));
             const isDrawerOpen = expandedDrawers.has(globalRowIdx);
@@ -1701,29 +1742,12 @@ require_once 'includes/layout.php';
         renderVirtualRows(true);
     }
 
-    /* ─── Optimistic Summary Recalculator ───────────────────── */
+    /* ─── Optimistic Summary Recalculator (Fast Linear Pass) ─── */
     function updateOptimisticSummary() {
         let clean = 0, critical = 0, warnings = 0;
-        const inFileGroups = getInFileDuplicateGroups();
+        const total = gridRows.length;
 
-        // Count duplicate copies in same file (each extra row beyond 1 in group is a duplicate)
-        let inFileDupCount = 0;
-        for (const k in inFileGroups) {
-            if (inFileGroups[k].length > 1) {
-                inFileDupCount += (inFileGroups[k].length - 1);
-            }
-        }
-
-        // Count database duplicates
-        let dbDupCount = 0;
-        for (let i = 0; i < gridRows.length; i++) {
-            const k = make6FieldKey(gridRows[i]);
-            if (k && (dbDuplicateDetailsMap.has(k) || !!getDatabaseDuplicateDetail(i))) {
-                dbDupCount++;
-            }
-        }
-
-        for (let i = 0; i < gridRows.length; i++) {
+        for (let i = 0; i < total; i++) {
             const r = gridRows[i];
             const hasCritical = r.has_critical || (r.errors && Object.keys(r.errors).length > 0);
             const hasWarnings = r.warnings && Object.keys(r.warnings).length > 0;
@@ -1732,7 +1756,7 @@ require_once 'includes/layout.php';
             if (!hasCritical && !hasWarnings) clean++;
         }
 
-        const dupCount = inFileDupCount + dbDupCount;
+        const dupCount = cachedInFileDupCount + cachedDbDupCount;
 
         const totalEl = document.getElementById('summary-total');
         const cleanEl = document.getElementById('summary-clean');
@@ -1740,7 +1764,7 @@ require_once 'includes/layout.php';
         const warnEl = document.getElementById('summary-warnings');
         const dupEl = document.getElementById('summary-duplicates');
 
-        if (totalEl) totalEl.textContent = gridRows.length.toLocaleString();
+        if (totalEl) totalEl.textContent = total.toLocaleString();
         if (cleanEl) cleanEl.textContent = clean.toLocaleString();
         if (critEl) critEl.textContent = critical.toLocaleString();
         if (warnEl) warnEl.textContent = warnings.toLocaleString();
@@ -1753,16 +1777,10 @@ require_once 'includes/layout.php';
         pushStateToHistory();
 
         const keptRow = gridRows[keptIdx];
-        const key = make6FieldKey(keptRow);
+        const key = keptRow._key || make6FieldKey(keptRow);
 
-        // Find all other rows matching this exact 6-field key
-        const toRemoveIndices = [];
-        for (let i = 0; i < gridRows.length; i++) {
-            if (i !== keptIdx && make6FieldKey(gridRows[i]) === key) {
-                toRemoveIndices.push(i);
-            }
-        }
-
+        // All other indices in this in-file duplicate group (from fast cache)
+        const toRemoveIndices = (cachedRowToCopies[keptIdx] || []).slice();
         if (toRemoveIndices.length === 0) return;
 
         // Sort descending so splicing from highest index does not disturb lower indices
@@ -1798,6 +1816,9 @@ require_once 'includes/layout.php';
         // Clear expanded drawer states
         expandedDrawers.clear();
 
+        // Rebuild fast O(1) index in a single pass
+        rebuildDuplicateIndex();
+
         // 0ms REAL-TIME UI UPDATE: recalculate counters & re-render grid immediately
         updateOptimisticSummary();
         renderGridTable();
@@ -1826,6 +1847,8 @@ require_once 'includes/layout.php';
         pushStateToHistory();
 
         gridRows[rowIdx][field] = clean;
+        gridRows[rowIdx]._key = make6FieldKey(gridRows[rowIdx]);
+        rebuildDuplicateIndex();
         validateGrid();
 
         if (currentDraftId) {
@@ -1842,31 +1865,14 @@ require_once 'includes/layout.php';
         pushStateToHistory();
 
         const targetRow = gridRows[idx];
-        const key = make6FieldKey(targetRow);
+        const key = targetRow._key || make6FieldKey(targetRow);
 
         // Remove row from memory immediately
         gridRows.splice(idx, 1);
 
-        // If this row had matching rows in-file, check if only 1 matching row remains
-        const remainingMatches = [];
-        for (let i = 0; i < gridRows.length; i++) {
-            if (make6FieldKey(gridRows[i]) === key) {
-                remainingMatches.push(i);
-            }
-        }
-        if (remainingMatches.length === 1) {
-            const remRow = gridRows[remainingMatches[0]];
-            if (remRow) {
-                const isStillDbDup = dbDuplicateDetailsMap.has(key);
-                if (!isStillDbDup && remRow.errors && remRow.errors.account_number &&
-                    remRow.errors.account_number.toLowerCase().includes('duplicate')) {
-                    delete remRow.errors.account_number;
-                }
-                remRow.has_critical = Object.keys(remRow.errors || {}).length > 0;
-                remRow.is_clean = !remRow.has_critical && (!remRow.warnings || Object.keys(remRow.warnings).length === 0);
-            }
-            latestDuplicateDetails = latestDuplicateDetails.filter(d => !(d.type === 'in_file' && make6FieldKey(d) === key));
-        } else if (remainingMatches.length === 0) {
+        // If this row was a DB duplicate and no other rows have this key, clean up
+        const stillHasKey = gridRows.some(r => (r._key || make6FieldKey(r)) === key);
+        if (!stillHasKey) {
             latestDuplicateDetails = latestDuplicateDetails.filter(d => make6FieldKey(d) !== key);
             dbDuplicateDetailsMap.delete(key);
         }
@@ -1875,6 +1881,26 @@ require_once 'includes/layout.php';
         const newExpanded = new Set();
         expandedDrawers.forEach(i => { if (i !== idx) newExpanded.add(i > idx ? i - 1 : i); });
         expandedDrawers = newExpanded;
+
+        // Rebuild fast O(1) index in a single pass
+        rebuildDuplicateIndex();
+
+        // If only 1 row remains in what was an in-file duplicate group, clear duplicate error
+        if (stillHasKey) {
+            const grp = cachedInFileGroups.get(key);
+            if (grp && grp.length === 1) {
+                const remRow = gridRows[grp[0]];
+                if (remRow) {
+                    const isStillDb = dbDuplicateDetailsMap.has(key);
+                    if (!isStillDb && remRow.errors && remRow.errors.account_number &&
+                        remRow.errors.account_number.toLowerCase().includes('duplicate')) {
+                        delete remRow.errors.account_number;
+                    }
+                    remRow.has_critical = Object.keys(remRow.errors || {}).length > 0;
+                    remRow.is_clean = !remRow.has_critical && (!remRow.warnings || Object.keys(remRow.warnings).length === 0);
+                }
+            }
+        }
 
         // 0ms REAL-TIME UI UPDATE: row disappears on screen immediately!
         updateOptimisticSummary();
