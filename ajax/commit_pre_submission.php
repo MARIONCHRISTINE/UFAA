@@ -190,46 +190,53 @@ try {
 
 // 2. Generate Password-Locked Single-Sheet Excel Output
 try {
-    // Prepend header row directly to $rows to avoid duplicating 300,000 array elements in RAM
-    array_unshift($rows, [
-        'owner_name'       => 'Owner Name',
-        'id_passport_no'   => 'ID/Passport No',
-        'date_of_birth'    => 'Date of Birth',
-        'account_number'   => 'Account Number',
-        'last_transaction' => 'Last Transaction Date/Time',
-        'due_amount'       => 'Due Amount',
-        'compilation_date' => 'Compilation Date'
-    ]);
-
     $uploadDir = __DIR__ . '/../uploads/generated_submissions/';
     if (!is_dir($uploadDir)) {
-        @mkdir($uploadDir, 0755, true);
+        @mkdir($uploadDir, 0777, true);
     }
+    @chmod($uploadDir, 0777);
 
     $targetPath = $uploadDir . $baseFileName;
 
-    $xlsx = SimpleXLSXGen::fromArray($rows, 'UFAA Submission');
+    $header = [
+        'Owner Name',
+        'ID/Passport No',
+        'Date of Birth',
+        'Account Number',
+        'Last Transaction Date/Time',
+        'Due Amount',
+        'Compilation Date'
+    ];
+
+    $xlsx = SimpleXLSXGen::fromArrayWithHeader($header, $rows, 'UFAA Submission');
     $xlsx->setProtectionPassword($protectionPassword);
-    $xlsx->saveAs($targetPath);
+    $saved = $xlsx->saveAs($targetPath);
 
-    $fileUrl = 'uploads/generated_submissions/' . $baseFileName;
-
-    echo json_encode([
-        'status'              => 'success',
-        'message'             => "Successfully imported {$countInserted} clean compliance records!",
-        'record_count'        => $countInserted,
-        'file_name'           => $baseFileName,
-        'file_url'            => $fileUrl,
-        'protection_password' => $protectionPassword,
-        'session_id'          => $sessionId
-    ]);
+    if ($saved && file_exists($targetPath) && filesize($targetPath) > 0) {
+        $fileUrl = 'download_submission.php?file=' . urlencode($baseFileName);
+        echo json_encode([
+            'status'              => 'success',
+            'has_file'            => true,
+            'message'             => "Successfully imported {$countInserted} clean compliance records!",
+            'record_count'        => $countInserted,
+            'file_name'           => $baseFileName,
+            'file_url'            => $fileUrl,
+            'protection_password' => $protectionPassword,
+            'session_id'          => $sessionId
+        ]);
+    } else {
+        throw new \Exception("Unable to write generated file to disk. Check folder permissions on uploads/generated_submissions.");
+    }
 
 } catch (\Throwable $ex) {
     // Database committed, return success with warning about file generation
     echo json_encode([
         'status'              => 'success',
-        'message'             => "Database updated with {$countInserted} records, but Excel generation encountered an error: " . $ex->getMessage(),
+        'has_file'            => false,
+        'message'             => "Database updated with {$countInserted} records, but locked Excel generation failed: " . $ex->getMessage(),
         'record_count'        => $countInserted,
+        'file_name'           => null,
+        'file_url'            => null,
         'protection_password' => $protectionPassword,
         'session_id'          => $sessionId
     ]);

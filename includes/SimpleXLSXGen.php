@@ -10,13 +10,19 @@ namespace Shuchkin;
 class SimpleXLSXGen {
 
     protected $sheets;
+    protected $headerRow;
     protected $protectionPassword;
 
     public function __construct() {
         $this->sheets = [
             ['name' => 'UFAA Submission', 'rows' => []]
         ];
+        $this->headerRow = null;
         $this->protectionPassword = null;
+    }
+
+    public static function hasZipSupport(): bool {
+        return class_exists('\\ZipArchive');
     }
 
     public static function fromArray(array $rows, $sheetName = 'UFAA Submission') {
@@ -25,9 +31,27 @@ class SimpleXLSXGen {
         return $xlsx;
     }
 
+    public static function fromArrayWithHeader(array $header, array &$rows, $sheetName = 'UFAA Submission') {
+        $xlsx = new static();
+        $xlsx->sheets[0] = ['name' => $sheetName, 'rows' => &$rows];
+        $xlsx->headerRow = $header;
+        return $xlsx;
+    }
+
     public function setProtectionPassword($password) {
         $this->protectionPassword = $password;
         return $this;
+    }
+
+    protected function getTempDir(): string {
+        $dir = __DIR__ . '/../uploads/tmp';
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0777, true);
+        }
+        if (is_dir($dir) && is_writable($dir)) {
+            return $dir;
+        }
+        return sys_get_temp_dir();
     }
 
     /**
@@ -49,9 +73,6 @@ class SimpleXLSXGen {
         return strtoupper(dechex($hash & 0xFFFF));
     }
 
-    /**
-     * Streams worksheet XML directly to a disk file to prevent PHP memory exhaustion.
-     */
     protected function writeSheetXmlToDisk(array &$rows, string $tempSheetPath): bool {
         $fp = @fopen($tempSheetPath, 'wb');
         if (!$fp) return false;
@@ -62,10 +83,27 @@ class SimpleXLSXGen {
         fwrite($fp, "    <sheetFormatPr defaultRowHeight=\"15\"/>\n");
         fwrite($fp, "    <sheetData>\n");
 
+        $currentRowNum = 1;
+
+        // Write header row if supplied via fromArrayWithHeader
+        if (!empty($this->headerRow) && is_array($this->headerRow)) {
+            $hBuf = '        <row r="1">';
+            $hVals = array_values($this->headerRow);
+            foreach ($hVals as $cIdx => $val) {
+                $colLetter = $this->colName($cIdx);
+                $cellRef = $colLetter . '1';
+                $safeVal = htmlspecialchars((string)$val, ENT_QUOTES | ENT_XML1, 'UTF-8');
+                $hBuf .= '<c r="' . $cellRef . '" t="inlineStr" s="1"><is><t>' . $safeVal . '</t></is></c>';
+            }
+            $hBuf .= "</row>\n";
+            fwrite($fp, $hBuf);
+            $currentRowNum = 2;
+        }
+
         $rowCount = count($rows);
         for ($rIdx = 0; $rIdx < $rowCount; $rIdx++) {
             $row = $rows[$rIdx];
-            $rowNum = $rIdx + 1;
+            $rowNum = $currentRowNum++;
             $rowBuf = '        <row r="' . $rowNum . '">';
 
             // Support both numeric indexed rows and associative row objects
@@ -189,7 +227,8 @@ class SimpleXLSXGen {
 </Relationships>');
 
         // 7. xl/worksheets/sheet1.xml (Streamed from disk file)
-        $tempSheetPath = tempnam(sys_get_temp_dir(), 'sxml_');
+        $tempDir = $this->getTempDir();
+        $tempSheetPath = tempnam($tempDir, 'sxml_');
         $this->writeSheetXmlToDisk($this->sheets[0]['rows'], $tempSheetPath);
         $zip->addFile($tempSheetPath, 'xl/worksheets/sheet1.xml');
 
@@ -199,7 +238,8 @@ class SimpleXLSXGen {
     }
 
     public function output() {
-        $tempZip = tempnam(sys_get_temp_dir(), 'xlsx_');
+        $tempDir = $this->getTempDir();
+        $tempZip = tempnam($tempDir, 'xlsx_');
         $this->saveAs($tempZip);
         $data = @file_get_contents($tempZip);
         @unlink($tempZip);
@@ -207,7 +247,8 @@ class SimpleXLSXGen {
     }
 
     public function downloadAs($filename) {
-        $tempZip = tempnam(sys_get_temp_dir(), 'xlsx_');
+        $tempDir = $this->getTempDir();
+        $tempZip = tempnam($tempDir, 'xlsx_');
         $this->saveAs($tempZip);
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="' . $filename . '"');

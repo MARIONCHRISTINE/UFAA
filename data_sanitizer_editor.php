@@ -1510,9 +1510,18 @@ async function commitSanitizedUpload() {
         }
         if (data.status !== 'success') throw new Error(data.message || 'Submission failed');
 
-        document.getElementById('success-modal-msg').textContent    = data.message;
-        document.getElementById('btn-modal-download').href          = data.file_url;
-        document.getElementById('btn-modal-download').download      = data.file_name;
+        document.getElementById('success-modal-msg').textContent = data.message || 'Submission completed.';
+
+        const dlBtn = document.getElementById('btn-modal-download');
+        if (data.file_url && data.file_url !== 'undefined' && data.file_url !== 'null') {
+            dlBtn.style.display  = 'inline-flex';
+            dlBtn.href           = data.file_url;
+            dlBtn.download       = data.file_name || 'UFAA_Submission.xlsx';
+        } else {
+            // Hide the download button if file generation was bypassed or failed
+            dlBtn.style.display  = 'none';
+        }
+
         document.getElementById('commit-success-modal').style.display = 'flex';
     } catch (err) { alert('Error: ' + err.message); }
     finally {
@@ -1528,9 +1537,9 @@ function triggerModalDownloadAndRedirect() {
         btn.style.pointerEvents = 'none';
     }
 
-    if (btn && btn.href) {
-        const url = btn.href;
-        const fn  = btn.download || 'UFAA_Submission.xlsx';
+    const url = btn ? btn.getAttribute('href') : '';
+    if (url && url !== '#' && url !== 'undefined' && !url.includes('undefined')) {
+        const fn  = btn.getAttribute('download') || 'UFAA_Submission.xlsx';
         const a   = document.createElement('a');
         a.href    = url;
         a.download= fn;
