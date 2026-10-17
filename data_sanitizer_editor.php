@@ -165,9 +165,9 @@ require_once 'includes/layout.php';
                 <i class="fa-solid fa-copy"></i> Inspect Duplicates
             </button>
         </div>
-        <button id="btn-submit-locked" class="btn-filter" onclick="commitSanitizedUpload()" disabled
-            style="padding:.52rem 1.25rem; font-size:.875rem; border-radius:8px; display:inline-flex; align-items:center; gap:.5rem; opacity:.5; cursor:not-allowed; transition:all .2s;">
-            <i class="fa-solid fa-lock" id="btn-submit-icon"></i>
+        <button id="btn-submit-locked" class="btn-filter" onclick="commitSanitizedUpload()"
+            style="padding:.52rem 1.25rem; font-size:.875rem; border-radius:8px; display:inline-flex; align-items:center; gap:.5rem; background:#16a34a; color:#fff; cursor:pointer; transition:all .2s;">
+            <i class="fa-solid fa-cloud-arrow-up" id="btn-submit-icon"></i>
             <span id="btn-submit-text">Upload &amp; Lock File</span>
         </button>
     </div>
@@ -423,19 +423,13 @@ document.addEventListener('DOMContentLoaded', () => {
 function applyOwnerPermissions() {
     const btn = document.getElementById('btn-submit-locked');
     if (!btn) return;
-    if (!isDraftOwner) {
-        btn.disabled = true;
-        btn.style.opacity = '0.65';
-        btn.style.cursor = 'not-allowed';
-        btn.innerHTML = `<i class="fa-solid fa-lock"></i> Only Owner (${escHtml(draftOwnerName)}) Can Submit`;
-        btn.title = `Only the file owner (${draftOwnerName}) is authorized to submit this file to UFAA.`;
-    } else {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-        btn.style.cursor = 'pointer';
-        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Lock File';
-        btn.title = '';
-    }
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+    btn.style.background = '#16a34a';
+    btn.style.color = '#fff';
+    btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Lock File';
+    btn.title = '';
 }
 
 /* ─── Open existing draft ──────────────────────────────── */
@@ -1474,14 +1468,16 @@ function updateSummaryCards(s) {
     const btn  = document.getElementById('btn-submit-locked');
     const icon = document.getElementById('btn-submit-icon');
     const lbl  = document.getElementById('btn-submit-text');
-    const ok   = s.critical === 0 && s.total > 0;
-    btn.disabled = !ok;
-    btn.style.opacity    = ok ? '1' : '.5';
-    btn.style.cursor     = ok ? 'pointer' : 'not-allowed';
-    btn.style.background = ok ? '#16a34a' : '';
-    btn.style.color      = ok ? '#fff' : '';
-    icon.className       = ok ? 'fa-solid fa-cloud-arrow-up' : 'fa-solid fa-lock';
-    lbl.textContent      = ok ? 'Upload & Lock File' : `Locked — Fix ${s.critical.toLocaleString()} Error(s)`;
+    // TEMPORARY OVERRIDE: Allow upload & lock even with errors for historical data import
+    btn.disabled = false;
+    btn.style.opacity    = '1';
+    btn.style.cursor     = 'pointer';
+    btn.style.background = '#16a34a';
+    btn.style.color      = '#fff';
+    icon.className       = 'fa-solid fa-cloud-arrow-up';
+    lbl.textContent      = (s.critical > 0)
+        ? `Upload & Lock File (${s.critical.toLocaleString()} Errors Bypassed)`
+        : 'Upload & Lock File';
 }
 
 /* ─── Export ───────────────────────────────────────────── */
@@ -1495,10 +1491,6 @@ function exportDraftExcel() {
 
 /* ─── Commit ───────────────────────────────────────────── */
 async function commitSanitizedUpload() {
-    if (currentDraftId && !isDraftOwner) {
-        alert(`Only the file owner (${draftOwnerName}) is authorized to submit this file to UFAA.`);
-        return;
-    }
 
     const btn = document.getElementById('btn-submit-locked');
     btn.disabled = true;

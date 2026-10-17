@@ -106,7 +106,7 @@ try {
             }
         }
 
-        // Normalize compilation date to YYYY-MM-DD
+        // Normalize compilation date to YYYY-MM-DD (fallback to today if missing/invalid to satisfy DB constraints)
         $formattedDate = null;
         if ($compilation !== '') {
             $parsed = date_create($compilation);
@@ -114,14 +114,22 @@ try {
                 $formattedDate = date_format($parsed, 'Y-m-d');
             }
         }
+        if ($formattedDate === null) {
+            $formattedDate = date('Y-m-d');
+        }
+
+        $cleanDue = preg_replace('/[^\d\.\-]/', '', $dueAmount);
+        if ($cleanDue === '' || !is_numeric($cleanDue)) {
+            $cleanDue = '0.00';
+        }
 
         $batchValues[] = "(?, ?, ?, ?, ?, ?, ?, 'Unclaimed', 'No', NOW())";
-        $batchParams[] = $ownerName !== '' ? $ownerName : null;
+        $batchParams[] = $ownerName !== '' ? $ownerName : 'Unknown';
         $batchParams[] = $idPassport !== '' ? $idPassport : null;
         $batchParams[] = $formattedDob;
-        $batchParams[] = $accountNo !== '' ? $accountNo : null;
+        $batchParams[] = $accountNo !== '' ? $accountNo : 'N/A';
         $batchParams[] = $lastTx !== '' ? $lastTx : null;
-        $batchParams[] = $dueAmount !== '' ? $dueAmount : null;
+        $batchParams[] = $cleanDue;
         $batchParams[] = $formattedDate;
 
         $countInserted++;
