@@ -1198,6 +1198,7 @@ async function validateGrid() {
 function computeFilteredIndices() {
     filteredRowIndices = [];
     const total = gridRows.length;
+    const seenInFileDupKeys = new Set();
 
     for (let i = 0; i < total; i++) {
         const r = gridRows[i];
@@ -1211,7 +1212,20 @@ function computeFilteredIndices() {
             const rowNum = i + 1;
             const hasDupErr = r.errors && r.errors.account_number && r.errors.account_number.toLowerCase().includes('duplicate');
             const inDetails = latestDuplicateDetails.some(d => d.row_num === rowNum || (d.type === 'in_file' && d.matched_with_row === rowNum));
-            if (hasDupErr || inDetails) filteredRowIndices.push(i);
+            if (hasDupErr || inDetails) {
+                const isDb = latestDuplicateDetails.some(d => d.row_num === rowNum && d.type === 'database');
+                if (isDb) {
+                    filteredRowIndices.push(i);
+                } else {
+                    // For in-file duplicates, display only ONE representative row in the duplicates view;
+                    // all other matching copies are displayed inside its drop-down drawer.
+                    const key = make6FieldKey(r);
+                    if (!seenInFileDupKeys.has(key)) {
+                        seenInFileDupKeys.add(key);
+                        filteredRowIndices.push(i);
+                    }
+                }
+            }
         } else {
             filteredRowIndices.push(i);
         }
@@ -1295,76 +1309,132 @@ function renderVirtualRows(forceReset = false) {
             return '';
         };
 
-        const dupDetail = latestDuplicateDetails.find(d => d.row_num === rowNum || (d.type === 'in_file' && d.matched_with_row === rowNum));
-        const isDup = !!dupDetail || (err.account_number && err.account_number.toLowerCase().includes('duplicate'));
+        const groupKey = make6FieldKey(r);
+        const otherInFileMatches = [];
+        if (groupKey) {
+            for (let k = 0; k < gridRows.length; k++) {
+                if (k !== globalRowIdx && make6FieldKey(gridRows[k]) === groupKey) {
+                    otherInFileMatches.push({ idx: k, rowNum: k + 1, data: gridRows[k] });
+                }
+            }
+        }
+
+        const dbDupDetail = latestDuplicateDetails.find(d => d.row_num === rowNum && d.type === 'database');
+        const isDb        = !!dbDupDetail;
+        const isInFileDup = otherInFileMatches.length > 0;
+        const isDup       = isDb || isInFileDup || (err.account_number && err.account_number.toLowerCase().includes('duplicate'));
         const isDrawerOpen = expandedDrawers.has(globalRowIdx);
 
         let drawerHtml = '';
         if (isDup && isDrawerOpen) {
-            const isDb = dupDetail && dupDetail.type === 'database';
-            const matchedLabel = isDb 
-                ? `<span style="background:#dc2626; color:#fff; font-size:.68rem; font-weight:800; padding:2px 7px; border-radius:5px;"><i class="fa-solid fa-database"></i> Original MySQL DB Record #${dupDetail.db_id}</span>`
-                : `<span style="background:#4338ca; color:#fff; font-size:.68rem; font-weight:800; padding:2px 7px; border-radius:5px;"><i class="fa-solid fa-copy"></i> Matched In-File Row #${dupDetail ? (dupDetail.matched_with_row === rowNum ? dupDetail.row_num : dupDetail.matched_with_row) : 'Original'}</span>`;
+            if (isDb) {
+                // Historical DB Duplicate Match Drawer
+                const dbOwner   = dbDupDetail.db_owner_name || dbDupDetail.owner_name || r.owner_name || '';
+                const dbId      = dbDupDetail.id_passport_no || r.id_passport_no || '';
+                const dbDob     = dbDupDetail.date_of_birth || r.date_of_birth || '';
+                const dbAcct    = dbDupDetail.account_number || r.account_number || '';
+                const dbTx      = dbDupDetail.last_transaction || r.last_transaction || '';
+                const dbAmt     = dbDupDetail.due_amount || r.due_amount || '';
+                const dbComp    = dbDupDetail.compilation_date || r.compilation_date || '';
+                const dbCreated = dbDupDetail.created_at || 'Previously Uploaded';
 
-            const dbOwner   = dupDetail ? (dupDetail.db_owner_name || dupDetail.owner_name) : (r.owner_name || '');
-            const dbId      = dupDetail ? dupDetail.id_passport_no : (r.id_passport_no || '');
-            const dbDob     = dupDetail ? dupDetail.date_of_birth : (r.date_of_birth || '');
-            const dbAcct    = dupDetail ? dupDetail.account_number : (r.account_number || '');
-            const dbTx      = dupDetail ? dupDetail.last_transaction : (r.last_transaction || '');
-            const dbAmt     = dupDetail ? dupDetail.due_amount : (r.due_amount || '');
-            const dbComp    = dupDetail ? dupDetail.compilation_date : (r.compilation_date || '');
-            const dbCreated = dupDetail
-                ? (dupDetail.type === 'database'
-                    ? (dupDetail.created_at || 'Previously Uploaded')
-                    : 'Same File')
-                : 'In-File Match';
-
-            drawerHtml = `
-            <tr style="background:#fff1f2;">
-                <td colspan="9" style="padding:.65rem .85rem; border-bottom:2px solid #fca5a5;">
-                    <div style="background:#fff; border:1px solid #fca5a5; border-radius:9px; padding:.65rem .85rem; box-shadow:0 2px 8px rgba(220,38,38,0.08);">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; padding-bottom:.35rem; border-bottom:1px dashed #fca5a5;">
-                            <div style="display:flex; align-items:center; gap:.6rem;">
-                                ${matchedLabel}
-                                <span style="font-size:.78rem; font-weight:700; color:#991b1b;">
-                                    <i class="fa-solid fa-database"></i> Original Entry Stored in Database
-                                </span>
+                drawerHtml = `
+                <tr style="background:#fff1f2;">
+                    <td colspan="9" style="padding:.65rem .85rem; border-bottom:2px solid #fca5a5;">
+                        <div style="background:#fff; border:1px solid #fca5a5; border-radius:9px; padding:.65rem .85rem; box-shadow:0 2px 8px rgba(220,38,38,0.08);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; padding-bottom:.35rem; border-bottom:1px dashed #fca5a5;">
+                                <div style="display:flex; align-items:center; gap:.6rem;">
+                                    <span style="background:#dc2626; color:#fff; font-size:.68rem; font-weight:800; padding:2px 7px; border-radius:5px;"><i class="fa-solid fa-database"></i> Original MySQL DB Record #${dbDupDetail.db_id}</span>
+                                    <span style="font-size:.78rem; font-weight:700; color:#991b1b;">
+                                        <i class="fa-solid fa-database"></i> Original Entry Stored in Database
+                                    </span>
+                                </div>
+                                <span style="font-size:.72rem; color:#64748b;"><i class="fa-solid fa-clock"></i> Uploaded: ${escHtml(dbCreated)}</span>
                             </div>
-                            <span style="font-size:.72rem; color:#64748b;"><i class="fa-solid fa-clock"></i> Uploaded: ${escHtml(dbCreated)}</span>
+                            <div style="overflow-x:auto;">
+                                <table style="width:100%; border-collapse:collapse; font-size:.78rem;">
+                                    <thead>
+                                        <tr style="background:#fef2f2; color:#991b1b; font-weight:700; text-transform:uppercase; font-size:.65rem;">
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Original Source</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Owner Name</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">ID / Passport No</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Date of Birth</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Account Number</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Last Transaction</th>
+                                            <th style="padding:.4rem .6rem; text-align:right; border:1px solid #fecaca;">Due Amount (KES)</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Compilation Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr style="background:#fff5f5; font-weight:600;">
+                                            <td style="padding:.4rem .6rem; font-weight:800; color:#991b1b; border:1px solid #fecaca;">Original DB Record #${dbDupDetail.db_id}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbOwner)}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbId)}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDob)}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b; font-weight:700;">${escHtml(dbAcct)}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbTx)}</td>
+                                            <td style="padding:.4rem .6rem; text-align:right; border:1px solid #fecaca; color:#991b1b; font-weight:700;">${escHtml(dbAmt)}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbComp)}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div style="overflow-x:auto;">
-                            <table style="width:100%; border-collapse:collapse; font-size:.78rem;">
-                                <thead>
-                                    <tr style="background:#fef2f2; color:#991b1b; font-weight:700; text-transform:uppercase; font-size:.65rem;">
-                                        <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Original Source</th>
-                                        <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Owner Name</th>
-                                        <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">ID / Passport No</th>
-                                        <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Date of Birth</th>
-                                        <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Account Number</th>
-                                        <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Last Transaction</th>
-                                        <th style="padding:.4rem .6rem; text-align:right; border:1px solid #fecaca;">Due Amount (KES)</th>
-                                        <th style="padding:.4rem .6rem; text-align:left; border:1px solid #fecaca;">Compilation Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr style="background:#fff5f5; font-weight:600;">
-                                        <td style="padding:.4rem .6rem; font-weight:800; color:#991b1b; border:1px solid #fecaca;">
-                                            ${isDb ? `Original DB Record #${dupDetail.db_id}` : `In-File Match Row #${dupDetail ? (dupDetail.matched_with_row === rowNum ? dupDetail.row_num : dupDetail.matched_with_row) : ''}`}
-                                        </td>
-                                        <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbOwner)}</td>
-                                        <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbId)}</td>
-                                        <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbDob)}</td>
-                                        <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b; font-weight:700;">${escHtml(dbAcct)}</td>
-                                        <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbTx)}</td>
-                                        <td style="padding:.4rem .6rem; text-align:right; border:1px solid #fecaca; color:#991b1b; font-weight:700;">${escHtml(dbAmt)}</td>
-                                        <td style="padding:.4rem .6rem; border:1px solid #fecaca; color:#991b1b;">${escHtml(dbComp)}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                    </td>
+                </tr>`;
+            } else if (isInFileDup) {
+                // In-File Duplicate Drawer: Displays all other duplicate copies in the sheet
+                drawerHtml = `
+                <tr style="background:#f5f3ff;">
+                    <td colspan="9" style="padding:.65rem .85rem; border-bottom:2px solid #ddd6fe;">
+                        <div style="background:#fff; border:1px solid #c4b5fd; border-radius:9px; padding:.65rem .85rem; box-shadow:0 2px 8px rgba(109,40,217,0.08);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; padding-bottom:.35rem; border-bottom:1px dashed #c4b5fd; flex-wrap:wrap; gap:.5rem;">
+                                <div style="display:flex; align-items:center; gap:.6rem;">
+                                    <span style="background:#6d28d9; color:#fff; font-size:.68rem; font-weight:800; padding:2px 7px; border-radius:5px;"><i class="fa-solid fa-copy"></i> Other In-File Copies (${otherInFileMatches.length})</span>
+                                    <span style="font-size:.78rem; font-weight:700; color:#5b21b6;">
+                                        Identical record found ${otherInFileMatches.length} time(s) elsewhere in this uploaded sheet
+                                    </span>
+                                </div>
+                                <button onclick="keepOneDuplicateRow(${globalRowIdx})" class="btn-reset" style="padding:.25rem .75rem; font-size:.75rem; font-weight:800; color:#fff; background:#6d28d9; border-radius:6px; cursor:pointer;" title="Keep Row #${rowNum} and remove the other ${otherInFileMatches.length} duplicate copy/copies">
+                                    <i class="fa-solid fa-check"></i> Keep Row #${rowNum} &amp; Remove Other ${otherInFileMatches.length}
+                                </button>
+                            </div>
+                            <div style="overflow-x:auto;">
+                                <table style="width:100%; border-collapse:collapse; font-size:.78rem;">
+                                    <thead>
+                                        <tr style="background:#ede9fe; color:#5b21b6; font-weight:700; text-transform:uppercase; font-size:.65rem;">
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #ddd6fe;">Duplicate Location</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #ddd6fe;">Owner Name</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #ddd6fe;">ID / Passport No</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #ddd6fe;">Date of Birth</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #ddd6fe;">Account Number</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #ddd6fe;">Last Transaction</th>
+                                            <th style="padding:.4rem .6rem; text-align:right; border:1px solid #ddd6fe;">Due Amount (KES)</th>
+                                            <th style="padding:.4rem .6rem; text-align:left; border:1px solid #ddd6fe;">Compilation Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${otherInFileMatches.map(m => `
+                                        <tr style="background:#faf5ff; font-weight:600;">
+                                            <td style="padding:.4rem .6rem; font-weight:800; color:#6d28d9; border:1px solid #ddd6fe;">
+                                                <i class="fa-solid fa-copy"></i> Sheet Row #${m.rowNum}
+                                            </td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #ddd6fe; color:#4c1d95;">${escHtml(m.data.owner_name)}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #ddd6fe; color:#4c1d95;">${escHtml(m.data.id_passport_no)}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #ddd6fe; color:#4c1d95;">${escHtml(m.data.date_of_birth)}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #ddd6fe; color:#4c1d95; font-weight:700;">${escHtml(m.data.account_number)}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #ddd6fe; color:#4c1d95;">${escHtml(m.data.last_transaction)}</td>
+                                            <td style="padding:.4rem .6rem; text-align:right; border:1px solid #ddd6fe; color:#4c1d95; font-weight:700;">${escHtml(m.data.due_amount)}</td>
+                                            <td style="padding:.4rem .6rem; border:1px solid #ddd6fe; color:#4c1d95;">${escHtml(m.data.compilation_date)}</td>
+                                        </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                    </div>
-                </td>
-            </tr>`;
+                    </td>
+                </tr>`;
+            }
         }
 
         html += `
@@ -1372,8 +1442,9 @@ function renderVirtualRows(forceReset = false) {
             <td style="padding:.45rem .4rem;text-align:center;font-weight:700;color:#94a3b8;font-size:.75rem;border-right:1px solid #f1f5f9;white-space:nowrap;">
                 ${rowNum}
                 ${isDup ? `
-                    <button onclick="toggleDuplicateDrawer(${globalRowIdx})" class="btn-reset" style="margin-left:4px; padding:1px 5px; font-size:.7rem; color:#dc2626; border:1px solid #fca5a5; background:#fff; border-radius:4px; cursor:pointer; vertical-align:middle;" title="Click to show/hide original database match">
+                    <button onclick="toggleDuplicateDrawer(${globalRowIdx})" class="btn-reset" style="margin-left:4px; padding:1px 6px; font-size:.7rem; color:${isInFileDup ? '#6d28d9' : '#dc2626'}; border:1px solid ${isInFileDup ? '#c4b5fd' : '#fca5a5'}; background:#fff; border-radius:4px; cursor:pointer; vertical-align:middle;" title="${isInFileDup ? `Click to view ${otherInFileMatches.length} other duplicate copy/copies in this sheet` : 'Click to view original database match'}">
                         <i class="fa-solid ${isDrawerOpen ? 'fa-chevron-up' : 'fa-chevron-down'}"></i>
+                        ${isInFileDup && otherInFileMatches.length > 0 ? `<span style="font-size:.65rem; font-weight:800; margin-left:2px; background:#6d28d9; color:#fff; padding:0 4px; border-radius:8px;">${otherInFileMatches.length}</span>` : ''}
                     </button>
                 ` : ''}
             </td>
@@ -1385,8 +1456,8 @@ function renderVirtualRows(forceReset = false) {
             <td contenteditable="true" data-row="${globalRowIdx}" data-field="due_amount"       onblur="updateCell(${globalRowIdx},'due_amount',this.innerText)"       style="padding:.45rem .65rem;text-align:right;font-weight:600;border-right:1px solid #f1f5f9;${cst('due_amount')}"       title="${ct('due_amount')}">${cellVal('due_amount', r.due_amount)}</td>
             <td contenteditable="true" data-row="${globalRowIdx}" data-field="compilation_date" onblur="updateCell(${globalRowIdx},'compilation_date',this.innerText)" style="padding:.45rem .65rem;border-right:1px solid #f1f5f9;${cst('compilation_date')}" title="${ct('compilation_date')}">${cellVal('compilation_date', r.compilation_date)}</td>
             <td style="padding:.45rem;text-align:center;white-space:nowrap;">
-                ${isDup && dupDetail && dupDetail.type === 'in_file'
-                    ? `<button onclick="keepOneDuplicateRow(${globalRowIdx})" class="btn-reset" style="padding:.22rem .55rem;font-size:.7rem;font-weight:700;color:#6d28d9;background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;" title="Keep this row and remove all duplicate copies">Keep 1</button>`
+                ${isInFileDup
+                    ? `<button onclick="keepOneDuplicateRow(${globalRowIdx})" class="btn-reset" style="padding:.22rem .55rem;font-size:.7rem;font-weight:700;color:#6d28d9;background:#ede9fe;border:1px solid #c4b5fd;border-radius:6px;cursor:pointer;" title="Keep this row and remove other ${otherInFileMatches.length} duplicate copy/copies">Keep 1</button>`
                     : `<button onclick="removeGridRow(${globalRowIdx})" class="btn-reset" style="padding:.2rem .45rem;font-size:.75rem;color:#ef4444;" title="Delete this record"><i class="fa-solid fa-trash-can"></i></button>`
                 }
             </td>
