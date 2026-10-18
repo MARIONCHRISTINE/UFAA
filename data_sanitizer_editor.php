@@ -1474,6 +1474,29 @@ require_once 'includes/layout.php';
                 cachedInFileDupCount += (grp.length - 1);
             }
         }
+
+        // 4. Mark in-file and DB duplicates on rows for immediate UI highlight
+        for (let i = 0; i < n; i++) {
+            const copies = cachedRowToCopies[i];
+            const dbDet = cachedRowToDbDetail[i];
+            if (!gridRows[i].errors) gridRows[i].errors = {};
+            if (!gridRows[i].warnings) gridRows[i].warnings = {};
+
+            if (dbDet) {
+                if (!gridRows[i].errors.account_number || !gridRows[i].errors.account_number.includes('DB Duplicate')) {
+                    gridRows[i].errors.account_number = `True DB Duplicate: All 6 fields match MySQL Record #${dbDet.db_id} (${dbDet.db_owner_name})`;
+                }
+                gridRows[i].has_critical = true;
+                gridRows[i].is_clean = false;
+            } else if (copies && copies.length > 0) {
+                if (!gridRows[i].errors.account_number) {
+                    const otherRowNums = copies.map(idx => '#' + (idx + 1)).join(', ');
+                    gridRows[i].errors.account_number = `True In-File Duplicate: Matches Row(s) ${otherRowNums}`;
+                }
+                gridRows[i].has_critical = true;
+                gridRows[i].is_clean = false;
+            }
+        }
     }
 
     function getInFileCopies(rowIdx) {
@@ -1518,7 +1541,7 @@ require_once 'includes/layout.php';
             // Merge compact row_issues into gridRows in memory
             const issues = data.row_issues || {};
             for (let i = 0; i < gridRows.length; i++) {
-                const iss = issues[i];
+                const iss = issues[i] || issues[String(i)];
                 if (iss) {
                     gridRows[i].errors = iss.errors || {};
                     gridRows[i].warnings = iss.warnings || {};
@@ -1898,16 +1921,12 @@ require_once 'includes/layout.php';
             btnDeleteDb.style.cursor = (cachedDbDupCount === 0) ? 'not-allowed' : 'pointer';
         }
 
-        // Strict Submit & Lock File Button State (Must be 100% clean and draft owner)
+        // Submit & Lock File Button State (Deactivated greying out for historical data upload)
         const submitBtn = document.getElementById('btn-submit-locked');
         const submitIcon = document.getElementById('btn-submit-icon');
         const submitLbl = document.getElementById('btn-submit-text');
 
-        const hasCritical = (critical > 0);
         const effectiveDups = Math.max(dupCount, (cachedInFileDupCount || 0) + (cachedDbDupCount || 0));
-        const hasDuplicates = (effectiveDups > 0);
-        // Warnings are informational and do NOT block submission — only critical errors and duplicates do
-        const isReadyToSubmit = (total > 0 && !hasCritical && !hasDuplicates);
 
         if (submitBtn) {
             if (!isDraftOwner) {
@@ -1919,29 +1938,17 @@ require_once 'includes/layout.php';
                 if (submitIcon) submitIcon.className = 'fa-solid fa-lock';
                 if (submitLbl) submitLbl.textContent = `Read-Only (Draft Owner: ${draftOwnerName || 'Officer'})`;
                 submitBtn.title = 'Only the draft creator is authorized to submit and lock this file.';
-            } else if (!isReadyToSubmit) {
+            } else if (total === 0) {
                 submitBtn.disabled = true;
                 submitBtn.style.opacity = '0.5';
                 submitBtn.style.cursor = 'not-allowed';
                 submitBtn.style.background = '#94a3b8';
                 submitBtn.style.color = '#ffffff';
                 if (submitIcon) submitIcon.className = 'fa-solid fa-lock';
-
-                const pendingIssues = [];
-                if (critical > 0) pendingIssues.push(`${critical.toLocaleString()} Error(s)`);
-                if (effectiveDups > 0) pendingIssues.push(`${effectiveDups.toLocaleString()} Duplicate(s)`);
-
-                if (submitLbl) {
-                    if (total === 0) {
-                        submitLbl.textContent = 'Upload & Lock File (No Records)';
-                    } else if (pendingIssues.length > 0) {
-                        submitLbl.textContent = `Upload & Lock File (${pendingIssues.join(', ')} Pending)`;
-                    } else {
-                        submitLbl.textContent = 'Upload & Lock File (Pending Issues)';
-                    }
-                }
-                submitBtn.title = 'Cannot submit: Please resolve all critical errors and duplicates first.';
+                if (submitLbl) submitLbl.textContent = 'Upload & Lock File (No Records)';
+                submitBtn.title = 'Cannot submit: No records loaded in draft.';
             } else {
+                // Deactivated greying out: Submit & Lock is active and clickable regardless of errors/duplicates
                 submitBtn.disabled = false;
                 submitBtn.style.opacity = '1';
                 submitBtn.style.cursor = 'pointer';
@@ -1949,13 +1956,16 @@ require_once 'includes/layout.php';
                 submitBtn.style.color = '#ffffff';
                 if (submitIcon) submitIcon.className = 'fa-solid fa-cloud-arrow-up';
                 if (submitLbl) {
-                    submitLbl.textContent = warnings > 0
-                        ? `Upload & Lock File (${warnings.toLocaleString()} Warning${warnings === 1 ? '' : 's'})`
-                        : 'Upload & Lock File';
+                    const pendingTotal = critical + effectiveDups;
+                    if (pendingTotal > 0) {
+                        submitLbl.textContent = `Upload & Lock File (${pendingTotal.toLocaleString()} Issues Bypassed)`;
+                    } else if (warnings > 0) {
+                        submitLbl.textContent = `Upload & Lock File (${warnings.toLocaleString()} Warning${warnings === 1 ? '' : 's'})`;
+                    } else {
+                        submitLbl.textContent = 'Upload & Lock File';
+                    }
                 }
-                submitBtn.title = warnings > 0
-                    ? `Ready to submit — ${warnings.toLocaleString()} warning(s) noted but do not block submission.`
-                    : 'All records are clean! Click to upload and lock file.';
+                submitBtn.title = 'Click to upload and lock file. Data will be inserted to database.';
             }
         }
     }
@@ -2253,7 +2263,17 @@ require_once 'includes/layout.php';
         const dmy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);
         if (dmy) {
             const yr = dmy[3].length === 2 ? ('20' + dmy[3]) : dmy[3];
-            return `${yr}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+            const p1 = parseInt(dmy[1], 10);
+            const p2 = parseInt(dmy[2], 10);
+            let day, month;
+            if (p1 > 12) {
+                day = p1; month = p2;
+            } else if (p2 > 12) {
+                month = p1; day = p2;
+            } else {
+                day = p1; month = p2;
+            }
+            return `${yr}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         }
         return s.toLowerCase();
     }
@@ -2395,32 +2415,12 @@ require_once 'includes/layout.php';
 
     /* ─── Commit ───────────────────────────────────────────── */
     async function commitSanitizedUpload() {
-        // Strict cleanliness verification before commit
-        // Warnings are informational and do NOT block submission
-        let critCount = 0;
-        for (let i = 0; i < gridRows.length; i++) {
-            const r = gridRows[i];
-            if (r.has_critical || (r.errors && Object.keys(r.errors).length > 0)) critCount++;
-        }
-        const effectiveDups = Math.max(
-            (cachedInFileDupCount || 0) + (cachedDbDupCount || 0),
-            latestDuplicateDetails ? latestDuplicateDetails.length : 0
-        );
-
         if (gridRows.length === 0) {
             alert('Cannot submit an empty draft. Please ensure data is loaded.');
             return;
         }
         if (!isDraftOwner) {
             alert(`Only the owner of this draft (${draftOwnerName || 'the original uploader'}) is authorized to upload and lock this file.`);
-            return;
-        }
-        if (critCount > 0 || effectiveDups > 0) {
-            alert(`Cannot upload and lock file:\n\nThere are still blocking issues in this file:\n` +
-                  `\u2022 Critical Errors: ${critCount.toLocaleString()}\n` +
-                  `\u2022 Duplicates: ${effectiveDups.toLocaleString()}\n\n` +
-                  `Please resolve all critical errors and duplicates before submitting.\n(Warnings are informational and do not block submission.)`);
-            updateOptimisticSummary();
             return;
         }
 
@@ -2533,6 +2533,7 @@ require_once 'includes/layout.php';
             const warn = (r.warnings && typeof r.warnings === 'object') ? { ...r.warnings } : {};
 
             if (!owner && !err.owner_name) err.owner_name = 'Owner Name is required';
+            if (!idPass && !err.id_passport_no) err.id_passport_no = 'ID / Passport No is required';
             if (!acct && !err.account_number) err.account_number = 'Account Number is required';
             if (!amt && !err.due_amount) err.due_amount = 'Due Amount is required';
             if (!comp && !err.compilation_date) err.compilation_date = 'Compilation Date is required';

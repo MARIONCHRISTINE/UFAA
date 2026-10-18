@@ -40,8 +40,11 @@ try {
 // Get JSON raw input
 $rawInput = file_get_contents('php://input');
 $data = json_decode($rawInput, true) ?: [];
+if (empty($data)) {
+    $data = !empty($_POST) ? $_POST : $_GET;
+}
 
-$draftId = isset($data['draft_id']) ? intval($data['draft_id']) : 0;
+$draftId = isset($data['draft_id']) ? intval($data['draft_id']) : (isset($_REQUEST['draft_id']) ? intval($_REQUEST['draft_id']) : 0);
 $rows = [];
 
 if (isset($data['rows']) && is_array($data['rows']) && !empty($data['rows'])) {
@@ -112,12 +115,21 @@ function normDateVal($d): string {
     if ($d === null || $d === '') return '';
     $s = trim((string)$d);
     if ($s === '') return '';
-    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $s, $m)) {
-        return "{$m[1]}-{$m[2]}-{$m[3]}";
+    if (preg_match('/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/', $s, $m)) {
+        return sprintf('%04d-%02d-%02d', (int)$m[1], (int)$m[2], (int)$m[3]);
     }
-    if (preg_match('/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/', $s, $m)) {
+    if (preg_match('/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{2,4})/', $s, $m)) {
         $year = strlen($m[3]) === 2 ? ('20' . $m[3]) : $m[3];
-        return sprintf('%04d-%02d-%02d', (int)$year, (int)$m[2], (int)$m[1]);
+        $p1 = (int)$m[1];
+        $p2 = (int)$m[2];
+        if ($p1 > 12) {
+            $day = $p1; $month = $p2;
+        } elseif ($p2 > 12) {
+            $month = $p1; $day = $p2;
+        } else {
+            $day = $p1; $month = $p2;
+        }
+        return sprintf('%04d-%02d-%02d', (int)$year, (int)$month, (int)$day);
     }
     $parsed = date_create($s);
     return $parsed ? date_format($parsed, 'Y-m-d') : strtolower($s);
