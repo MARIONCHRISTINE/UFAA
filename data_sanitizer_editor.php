@@ -267,16 +267,12 @@ require_once 'includes/layout.php';
                 style="padding:.42rem .85rem; font-size:.82rem; border-radius:7px; color:#0369a1; background:#e0f2fe; border:1px solid #bae6fd;">
                 <i class="fa-solid fa-filter"></i> Export Filter
             </button>
-            <button class="btn-reset" onclick="autoFixAllCompilationDates()"
-                style="padding:.42rem .85rem; font-size:.82rem; border-radius:7px;">
-                <i class="fa-solid fa-wand-magic-sparkles" style="color:#6d28d9;"></i> Auto-Fix Dates
-            </button>
             <button class="btn-reset" onclick="openDuplicateInspectorModal()"
                 style="padding:.42rem .85rem; font-size:.82rem; border-radius:7px; color:#b91c1c; background:#fef2f2; border:1px solid #fecaca;">
                 <i class="fa-solid fa-copy" style="color:#dc2626;"></i> Inspect Duplicates
             </button>
         </div>
-        <button id="btn-submit-locked" class="btn-filter" onclick="commitSanitizedUpload()" disabled
+        <button id="btn-submit-locked" type="button" class="btn-filter" onclick="commitSanitizedUpload()" disabled
             style="padding:.52rem 1.25rem; font-size:.875rem; border-radius:8px; display:inline-flex; align-items:center; gap:.5rem; background:#94a3b8; color:#fff; cursor:not-allowed; opacity:0.5; transition:all .2s;"
             title="Loading draft records...">
             <i class="fa-solid fa-lock" id="btn-submit-icon"></i>
@@ -1357,9 +1353,6 @@ require_once 'includes/layout.php';
                     <button onclick="window.location.replace('data_preparation.php')" class="btn-filter" style="padding:.65rem 1.35rem; font-size:.875rem; font-weight:700; border-radius:10px; background:var(--airtel-red); color:#fff; cursor:pointer; display:inline-flex; align-items:center; gap:.5rem; box-shadow:0 4px 14px rgba(220,38,38,0.35);">
                         <i class="fa-solid fa-arrow-left"></i> Return to Working Files Now
                     </button>
-                    <div style="font-size:.82rem; font-weight:700; color:#64748b; background:#f1f5f9; padding:.4rem .9rem; border-radius:20px; border:1px solid #cbd5e1; display:inline-flex; align-items:center; gap:.4rem;">
-                        <i class="fa-solid fa-clock" style="color:var(--airtel-red);"></i> Auto-redirecting in <span id="closed-countdown-sec" style="color:var(--airtel-red); font-weight:800; font-size:.95rem;">5</span>s
-                    </div>
                 </div>
             </div>
         `;
@@ -1367,38 +1360,18 @@ require_once 'includes/layout.php';
         } else {
             closedModal.style.display = 'flex';
         }
-
-        let remaining = 5;
-        const secSpan = document.getElementById('closed-countdown-sec');
-        if (secSpan) secSpan.textContent = remaining;
-
-        const timer = setInterval(() => {
-            remaining--;
-            if (secSpan) secSpan.textContent = Math.max(0, remaining);
-            if (remaining <= 0) {
-                clearInterval(timer);
-                const badgeWrap = secSpan ? secSpan.parentElement : null;
-                if (badgeWrap) {
-                    badgeWrap.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:var(--airtel-red);"></i> Redirecting now…';
-                }
-                window.location.replace('data_preparation.php');
-            }
-        }, 1000);
     }
 
-    /* ─── 6-Field Duplicate Key Generator (Identical to Server Engine) ── */
-    function make6FieldKey(r) {
+    /* ─── Duplicate Key Generator (Matches ID, Account, and Last Transaction) ── */
+    function makeDupKey(r) {
         if (!r) return '';
         const normId = String(r.id_passport_no || '').trim().toUpperCase();
-        const normDob = flexDate(r.date_of_birth);
         const normAcct = String(r.account_number || '').trim().toUpperCase().replace(/[\s\-_]/g, '');
-        const normTx = flexDate(r.last_transaction);
-        const cleanAmt = String(r.due_amount || '').replace(/[^\d\.\-]/g, '');
-        const normAmt = (!isNaN(parseFloat(cleanAmt)) && isFinite(cleanAmt)) ? parseFloat(cleanAmt).toFixed(2) : String(r.due_amount || '').trim().toLowerCase();
-        const normComp = flexDate(r.compilation_date);
+        const normTx = String(r.last_transaction || '').trim().replace(/\s+/g, ' ').toUpperCase();
         if (!normAcct && !normId) return '';
-        return `${normId}|${normDob}|${normAcct}|${normTx}|${normAmt}|${normComp}`;
+        return `${normId}|${normAcct}|${normTx}`;
     }
+    const make6FieldKey = makeDupKey;
 
     /* ─── Ultra-Fast O(1) Duplicate Cache for Tens of Thousands of Rows ─── */
     let cachedInFileGroups = new Map(); // key -> [rowIdx1, rowIdx2, ...]

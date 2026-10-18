@@ -84,14 +84,14 @@ $inFileDuplicates = 0;
 $dbDuplicates = 0;
 
 // Trackers for identity consistency & duplicates in-file
-$seen6FieldKeys  = [];
+$seenDupKeys     = [];
 $seenIdDobMap    = [];
 $seenIdNameMap   = [];
 $seenAcctNameMap = [];
 
 $invalidPlaceholders = ['N/A', 'NA', 'NONE', 'NIL', 'UNKNOWN', 'NOT PROVIDED', 'NO ID', 'NOT AVAILABLE', '0', '-', '--', '000000', '123456', 'NULL', 'INVALID'];
 
-// ── Robust Normalization Functions ─────────────────────────────────────────
+// ── Normalization Functions ────────────────────────────────────────────────
 function normString($val): string {
     return strtolower(trim((string)($val ?? '')));
 }
@@ -104,40 +104,12 @@ function normAcctVal($acct): string {
     return strtoupper(preg_replace('/[\s\-_]/', '', (string)($acct ?? '')));
 }
 
-function normAmountVal($amt): string {
-    if ($amt === null || $amt === '') return '';
-    $clean = preg_replace('/[^\d\.\-]/', '', (string)$amt);
-    if (!is_numeric($clean)) return strtolower(trim((string)$amt));
-    return number_format((float)$clean, 2, '.', '');
-}
-
-function normDateVal($d): string {
-    if ($d === null || $d === '') return '';
-    $s = trim((string)$d);
-    if ($s === '') return '';
-    if (preg_match('/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/', $s, $m)) {
-        return sprintf('%04d-%02d-%02d', (int)$m[1], (int)$m[2], (int)$m[3]);
-    }
-    if (preg_match('/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{2,4})/', $s, $m)) {
-        $p1 = (int)$m[1];
-        $p2 = (int)$m[2];
-        $yr = strlen($m[3]) === 2 ? (int)('20' . $m[3]) : (int)$m[3];
-        if ($p1 > 12 && $p2 <= 12) {
-            return sprintf('%04d-%02d-%02d', $yr, $p2, $p1);
-        } elseif ($p2 > 12 && $p1 <= 12) {
-            return sprintf('%04d-%02d-%02d', $yr, $p1, $p2);
-        } else {
-            $parsed = date_create($s);
-            if ($parsed) return date_format($parsed, 'Y-m-d');
-            return sprintf('%04d-%02d-%02d', $yr, $p2, $p1);
-        }
-    }
-    $parsed = date_create($s);
-    return $parsed ? date_format($parsed, 'Y-m-d') : strtolower($s);
-}
-
-function makeNormalized6Key($id, $dob, $acct, $tx, $amt, $comp): string {
-    return normIdVal($id) . '|' . normDateVal($dob) . '|' . normAcctVal($acct) . '|' . normDateVal($tx) . '|' . normAmountVal($amt) . '|' . normDateVal($comp);
+function makeDupKey($id, $acct, $tx): string {
+    $normId   = strtoupper(trim((string)($id ?? '')));
+    $normAcct = strtoupper(preg_replace('/[\s\-_]/', '', (string)($acct ?? '')));
+    $normTx   = strtoupper(preg_replace('/\s+/', ' ', trim((string)($tx ?? ''))));
+    if ($normAcct === '' && $normId === '') return '';
+    return $normId . '|' . $normAcct . '|' . $normTx;
 }
 
 // ── Pre-fetch Candidate Database Records by Account Number ──────────────────
@@ -159,7 +131,7 @@ foreach ($rows as $r) {
 $acctList = array_keys($acctList);
 $missingAcctIdList = array_keys($missingAcctIdList);
 
-$db6FieldMap = [];
+$dbDupMap = [];
 
 // Batch query candidate records by Account Number
 if (!empty($acctList)) {
@@ -174,15 +146,10 @@ if (!empty($acctList)) {
             ");
             $stmt->execute($chunk);
             while ($dbRow = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $sixKey = makeNormalized6Key(
-                    $dbRow['id_passport_no'],
-                    $dbRow['date_of_birth'],
-                    $dbRow['account_number'],
-                    $dbRow['last_transaction'],
-                    $dbRow['due_amount'],
-                    $dbRow['compilation_date']
-                );
-                $db6FieldMap[$sixKey] = $dbRow;
+                $key = makeDupKey($dbRow['id_passport_no'], $dbRow['account_number'], $dbRow['last_transaction']);
+                if ($key !== '') {
+                    $dbDupMap[$key] = $dbRow;
+                }
             }
         } catch (Exception $ex) {
             error_log("DB Duplicate lookup error: " . $ex->getMessage());
@@ -203,15 +170,10 @@ if (!empty($missingAcctIdList)) {
             ");
             $stmt->execute($chunk);
             while ($dbRow = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $sixKey = makeNormalized6Key(
-                    $dbRow['id_passport_no'],
-                    $dbRow['date_of_birth'],
-                    $dbRow['account_number'],
-                    $dbRow['last_transaction'],
-                    $dbRow['due_amount'],
-                    $dbRow['compilation_date']
-                );
-                $db6FieldMap[$sixKey] = $dbRow;
+                $key = makeDupKey($dbRow['id_passport_no'], $dbRow['account_number'], $dbRow['last_transaction']);
+                if ($key !== '') {
+                    $dbDupMap[$key] = $dbRow;
+                }
             }
         } catch (Exception $ex) {}
     }
@@ -250,11 +212,6 @@ foreach ($rows as $index => $row) {
     }
     if ($compilation === '') {
         $errors['compilation_date'] = 'Compilation Date is required';
-    } else {
-        $compNormalized = normDateVal($compilation);
-        if ($compNormalized === '') {
-            $errors['compilation_date'] = 'Invalid Compilation Date format';
-        }
     }
 
     // 2. ID / Passport Validation
@@ -262,7 +219,6 @@ foreach ($rows as $index => $row) {
         $errors['id_passport_no'] = 'ID / Passport No is required';
     } else {
         $cleanId = strtoupper(trim($idPassport));
-        $normDob  = normDateVal($dob);
         $normName = normString($ownerName);
 
         if (in_array($cleanId, $invalidPlaceholders, true) || strlen($cleanId) < 5 || preg_match('/^[a-z0-9]{1,4}$/i', $cleanId)) {
@@ -270,10 +226,10 @@ foreach ($rows as $index => $row) {
         }
 
         // 2A. Identity Anomaly: Same ID with different DOB
-        if ($normDob !== '') {
+        if ($dob !== '') {
             if (isset($seenIdDobMap[$cleanId])) {
                 $prevDob = $seenIdDobMap[$cleanId];
-                if ($prevDob['dob'] !== '' && $prevDob['dob'] !== $normDob) {
+                if ($prevDob['dob'] !== '' && strtolower($prevDob['dob']) !== strtolower($dob)) {
                     $warnings['id_passport_no'] = "Identity Anomaly: Same ID matches Row #{$prevDob['row_num']} with different DOB";
                     $warnings['date_of_birth']  = "DOB Conflict: ID matches Row #{$prevDob['row_num']} with DOB {$prevDob['raw_dob']}";
 
@@ -283,7 +239,7 @@ foreach ($rows as $index => $row) {
                     $rowIssues[$prevRowIdx]['warnings']['date_of_birth']  = "DOB Conflict: ID matches Row #{$rowNum} with DOB {$dob}";
                 }
             } else {
-                $seenIdDobMap[$cleanId] = ['dob' => $normDob, 'raw_dob' => $dob, 'row_num' => $rowNum];
+                $seenIdDobMap[$cleanId] = ['dob' => $dob, 'raw_dob' => $dob, 'row_num' => $rowNum];
             }
         }
 
@@ -306,30 +262,23 @@ foreach ($rows as $index => $row) {
         }
     }
 
-    // 3. Date Checks for DOB & Last Transaction
+    // 3. Required Checks for DOB & Last Transaction
     if ($dob === '') {
         $errors['date_of_birth'] = 'Date of Birth is required';
-    } else {
-        if (normDateVal($dob) === '') {
-            $warnings['date_of_birth'] = "Unrecognized Date of Birth format ('{$dob}')";
-        }
     }
 
     if ($lastTx === '') {
         $errors['last_transaction'] = 'Last Transaction date is required';
-    } else {
-        if (normDateVal($lastTx) === '') {
-            $warnings['last_transaction'] = "Unrecognized Last Transaction date format ('{$lastTx}')";
-        }
     }
 
-    // 4. True 6-Field Duplicate Checks (In-File and Historical DB matches)
-    $sixKey = makeNormalized6Key($idPassport, $dob, $accountNo, $lastTx, $dueAmount, $compilation);
+    // 4. Duplicate Checks (In-File and Historical DB matches)
+    // Matches by ID number, Account number, and Last Transaction
+    $dupKey = makeDupKey($idPassport, $accountNo, $lastTx);
 
-    // 4A: True In-File Duplicate (All 6 fields match another row in this sheet)
-    if (isset($seen6FieldKeys[$sixKey])) {
-        $dupRow = $seen6FieldKeys[$sixKey];
-        $errors['account_number'] = "True In-File Duplicate: All 6 fields match Row #{$dupRow}";
+    // 4A: In-File Duplicate (ID, Account, and Last Transaction match another row in this sheet)
+    if ($dupKey !== '' && isset($seenDupKeys[$dupKey])) {
+        $dupRow = $seenDupKeys[$dupKey];
+        $errors['account_number'] = "True In-File Duplicate: ID, Account, and Last Transaction match Row #{$dupRow}";
         $inFileDuplicates++;
         $duplicateDetails[] = [
             'type'             => 'in_file',
@@ -347,15 +296,15 @@ foreach ($rows as $index => $row) {
         // Backfill earlier row
         $prevRowIdx = $dupRow - 1;
         if (!isset($rowIssues[$prevRowIdx])) $rowIssues[$prevRowIdx] = ['errors' => [], 'warnings' => []];
-        $rowIssues[$prevRowIdx]['errors']['account_number'] = "True In-File Duplicate: All 6 fields match Row #{$rowNum}";
-    } else {
-        $seen6FieldKeys[$sixKey] = $rowNum;
+        $rowIssues[$prevRowIdx]['errors']['account_number'] = "True In-File Duplicate: ID, Account, and Last Transaction match Row #{$rowNum}";
+    } elseif ($dupKey !== '') {
+        $seenDupKeys[$dupKey] = $rowNum;
     }
 
-    // 4B: True Historical DB Duplicate (All 6 fields match a MySQL database record)
-    if (isset($db6FieldMap[$sixKey])) {
-        $matchedDb = $db6FieldMap[$sixKey];
-        $errors['account_number'] = "True DB Duplicate: All 6 fields match MySQL Record #{$matchedDb['id']} ({$matchedDb['owner_name']})";
+    // 4B: Historical DB Duplicate (ID, Account, and Last Transaction match a MySQL database record)
+    if ($dupKey !== '' && isset($dbDupMap[$dupKey])) {
+        $matchedDb = $dbDupMap[$dupKey];
+        $errors['account_number'] = "True DB Duplicate: ID, Account, and Last Transaction match MySQL Record #{$matchedDb['id']} ({$matchedDb['owner_name']})";
         $dbDuplicates++;
         $duplicateDetails[] = [
             'type'             => 'database',
