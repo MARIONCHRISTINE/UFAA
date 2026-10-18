@@ -348,6 +348,8 @@ require_once 'includes/layout.php';
 
         const reader = new FileReader();
         reader.onload = async e => {
+            // Give UI 50ms to render modal + repaint BEFORE the heavy XLSX.read blocks the main thread
+            await new Promise(resolve => setTimeout(resolve, 50));
             // Give UI a moment to show modal before heavy parsing begins
             setTimeout(async () => {
                 try {

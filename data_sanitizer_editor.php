@@ -2263,17 +2263,7 @@ require_once 'includes/layout.php';
         const dmy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);
         if (dmy) {
             const yr = dmy[3].length === 2 ? ('20' + dmy[3]) : dmy[3];
-            const p1 = parseInt(dmy[1], 10);
-            const p2 = parseInt(dmy[2], 10);
-            let day, month;
-            if (p1 > 12) {
-                day = p1; month = p2;
-            } else if (p2 > 12) {
-                month = p1; day = p2;
-            } else {
-                day = p1; month = p2;
-            }
-            return `${yr}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            return `${yr}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
         }
         return s.toLowerCase();
     }
