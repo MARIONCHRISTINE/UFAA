@@ -182,6 +182,9 @@ function build_multiple_search_clause($fieldName, $userInput, &$whereClauses, &$
  * Ensures no portal page or AJAX endpoint can be accessed without a valid logged-in session.
  */
 function require_portal_auth() {
+    if (php_sapi_name() === 'cli') {
+        return;
+    }
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }

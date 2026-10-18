@@ -101,26 +101,9 @@ try {
         $dueAmount   = trim((string)($row['due_amount'] ?? ''));
         $compilation = trim((string)($row['compilation_date'] ?? ''));
 
-        // Normalize date of birth to YYYY-MM-DD (or NULL) to support hosted DATE column
-        $formattedDob = null;
-        if ($dob !== '') {
-            $parsedDob = date_create($dob);
-            if ($parsedDob) {
-                $formattedDob = date_format($parsedDob, 'Y-m-d');
-            }
-        }
-
-        // Normalize compilation date to YYYY-MM-DD (fallback to today if missing/invalid to satisfy DB constraints)
-        $formattedDate = null;
-        if ($compilation !== '') {
-            $parsed = date_create($compilation);
-            if ($parsed) {
-                $formattedDate = date_format($parsed, 'Y-m-d');
-            }
-        }
-        if ($formattedDate === null) {
-            $formattedDate = date('Y-m-d');
-        }
+        // Store dates as uploaded without tampering
+        $formattedDob = $dob !== '' ? $dob : null;
+        $formattedDate = $compilation !== '' ? $compilation : date('Y-m-d');
 
         $cleanDue = preg_replace('/[^\d\.\-]/', '', $dueAmount);
         if ($cleanDue === '' || !is_numeric($cleanDue)) {

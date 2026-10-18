@@ -397,6 +397,7 @@ require_once 'includes/layout.php';
                     };
 
                     let parsedRows = [];
+                    const BATCH_YIELD = 25000;
                     for (let i = 1; i < raw.length; i++) {
                         const r = raw[i];
                         if (!r || r.every(c => String(c).trim() === '')) continue;
@@ -409,6 +410,10 @@ require_once 'includes/layout.php';
                             due_amount:       rawVal(col.due_amount >= 0 ? r[col.due_amount] : r[5]),
                             compilation_date: rawVal(col.compilation_date >= 0 ? r[col.compilation_date] : r[6])
                         });
+                        if (i % BATCH_YIELD === 0) {
+                            if (modalDetail) modalDetail.textContent = `Parsed ${i.toLocaleString()} / ${raw.length.toLocaleString()} rows…`;
+                            await new Promise(res => setTimeout(res, 0));
+                        }
                     }
 
                     // 2. Strict secondary check on actual parsed data rows

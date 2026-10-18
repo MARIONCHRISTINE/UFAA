@@ -115,12 +115,22 @@ function normDateVal($d): string {
     if ($d === null || $d === '') return '';
     $s = trim((string)$d);
     if ($s === '') return '';
-    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})/', $s, $m)) {
-        return "{$m[1]}-{$m[2]}-{$m[3]}";
+    if (preg_match('/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/', $s, $m)) {
+        return sprintf('%04d-%02d-%02d', (int)$m[1], (int)$m[2], (int)$m[3]);
     }
-    if (preg_match('/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/', $s, $m)) {
-        $year = strlen($m[3]) === 2 ? ('20' . $m[3]) : $m[3];
-        return sprintf('%04d-%02d-%02d', (int)$year, (int)$m[2], (int)$m[1]);
+    if (preg_match('/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{2,4})/', $s, $m)) {
+        $p1 = (int)$m[1];
+        $p2 = (int)$m[2];
+        $yr = strlen($m[3]) === 2 ? (int)('20' . $m[3]) : (int)$m[3];
+        if ($p1 > 12 && $p2 <= 12) {
+            return sprintf('%04d-%02d-%02d', $yr, $p2, $p1);
+        } elseif ($p2 > 12 && $p1 <= 12) {
+            return sprintf('%04d-%02d-%02d', $yr, $p1, $p2);
+        } else {
+            $parsed = date_create($s);
+            if ($parsed) return date_format($parsed, 'Y-m-d');
+            return sprintf('%04d-%02d-%02d', $yr, $p2, $p1);
+        }
     }
     $parsed = date_create($s);
     return $parsed ? date_format($parsed, 'Y-m-d') : strtolower($s);

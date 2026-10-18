@@ -631,6 +631,7 @@ require_once 'includes/layout.php';
     let activeViewers = [];
     let latestDuplicateDetails = [];
     let dbDuplicateDetailsMap = new Map();
+    let rowToDbDetailMap = new Map();
     let currentCardFilter = 'all';
 
     // Pagination & Virtual Scroll Configuration
@@ -1431,7 +1432,7 @@ require_once 'includes/layout.php';
             }
             grp.push(i);
 
-            let dbDet = dbDuplicateDetailsMap.get(k) || null;
+            let dbDet = (k ? dbDuplicateDetailsMap.get(k) : null) || rowToDbDetailMap.get(i) || null;
             if (!dbDet && r.errors && r.errors.account_number &&
                 (r.errors.account_number.includes('DB Duplicate') || r.errors.account_number.includes('MySQL Record') || r.errors.account_number.toLowerCase().includes('database'))) {
                 const m = r.errors.account_number.match(/MySQL Record #(\d+)(?:\s*\((.*?)\))?/i);
@@ -1531,10 +1532,14 @@ require_once 'includes/layout.php';
 
             latestDuplicateDetails = data.duplicate_details || [];
             dbDuplicateDetailsMap.clear();
+            rowToDbDetailMap.clear();
             latestDuplicateDetails.forEach(d => {
                 if (d.type === 'database') {
                     const k = make6FieldKey(d);
                     if (k) dbDuplicateDetailsMap.set(k, d);
+                    if (d.row_num !== undefined && d.row_num !== null) {
+                        rowToDbDetailMap.set(d.row_num - 1, d);
+                    }
                 }
             });
 
@@ -1584,25 +1589,13 @@ require_once 'includes/layout.php';
             } else if (currentCardFilter === 'warnings') {
                 if (r.warnings && Object.keys(r.warnings).length > 0) filteredRowIndices.push(i);
             } else if (currentCardFilter === 'duplicates') {
-                const k = r._key || make6FieldKey(r);
                 const copies = cachedRowToCopies[i];
                 const hasInFileCopies = copies && copies.length > 0;
                 const dbMatch = cachedRowToDbDetail[i];
+                const hasDupErr = r.errors && r.errors.account_number && r.errors.account_number.toLowerCase().includes('duplicate');
 
-                // DB match ALWAYS takes priority — show every DB duplicate row individually.
-                // Only collapse to 1 representative when it is a PURE in-file dup (no DB match).
-                if (dbMatch) {
-                    // Scenario 1: Duplicate from database → show each row (needs individual Delete)
+                if (dbMatch || hasInFileCopies || hasDupErr) {
                     filteredRowIndices.push(i);
-                } else if (hasInFileCopies) {
-                    // Scenario 2: Pure in-file duplicate → show ONLY the first representative row
-                    if (!seenInFileKeys.has(k)) {
-                        seenInFileKeys.add(k);
-                        filteredRowIndices.push(i);
-                    }
-                } else {
-                    const hasDupErr = r.errors && r.errors.account_number && r.errors.account_number.toLowerCase().includes('duplicate');
-                    if (hasDupErr) filteredRowIndices.push(i);
                 }
             } else {
                 filteredRowIndices.push(i);
@@ -1870,22 +1863,16 @@ require_once 'includes/layout.php';
         // Compute dupCount using IDENTICAL logic as computeFilteredIndices('duplicates')
         // so the card always matches the actual number of rows shown in the filter.
         let dupCount = 0;
-        const seenDupKeys = new Set();
         for (let i = 0; i < total; i++) {
             const dbMatch = cachedRowToDbDetail[i];
             const copies = cachedRowToCopies[i];
             const hasInFileCopies = copies && copies.length > 0;
-            const rk = gridRows[i]._key;
-            if (dbMatch) {
+            const rr = gridRows[i];
+            const hasDupErr = rr.errors && rr.errors.account_number &&
+                rr.errors.account_number.toLowerCase().includes('duplicate');
+
+            if (dbMatch || hasInFileCopies || hasDupErr) {
                 dupCount++;
-            } else if (hasInFileCopies && rk && !seenDupKeys.has(rk)) {
-                seenDupKeys.add(rk);
-                dupCount++;
-            } else {
-                const rr = gridRows[i];
-                const hasDupErr = rr.errors && rr.errors.account_number &&
-                    rr.errors.account_number.toLowerCase().includes('duplicate');
-                if (hasDupErr) dupCount++;
             }
         }
 
@@ -2258,12 +2245,20 @@ require_once 'includes/layout.php';
     function flexDate(s) {
         if (!s) return '';
         s = String(s).trim();
-        const ymd = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+        const ymd = s.match(/^(\d{4})[-\/\.](\d{1,2})[-\/\.](\d{1,2})/);
         if (ymd) return `${ymd[1]}-${ymd[2].padStart(2, '0')}-${ymd[3].padStart(2, '0')}`;
-        const dmy = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);
+        const dmy = s.match(/^(\d{1,2})[-\/\.](\d{1,2})[-\/\.](\d{2,4})/);
         if (dmy) {
+            const p1 = parseInt(dmy[1], 10);
+            const p2 = parseInt(dmy[2], 10);
             const yr = dmy[3].length === 2 ? ('20' + dmy[3]) : dmy[3];
-            return `${yr}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
+            if (p1 > 12 && p2 <= 12) {
+                return `${yr}-${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}`;
+            } else if (p2 > 12 && p1 <= 12) {
+                return `${yr}-${String(p1).padStart(2, '0')}-${String(p2).padStart(2, '0')}`;
+            } else {
+                return `${yr}-${String(p2).padStart(2, '0')}-${String(p1).padStart(2, '0')}`;
+            }
         }
         return s.toLowerCase();
     }
