@@ -276,10 +276,11 @@ require_once 'includes/layout.php';
                 <i class="fa-solid fa-copy" style="color:#dc2626;"></i> Inspect Duplicates
             </button>
         </div>
-        <button id="btn-submit-locked" class="btn-filter" onclick="commitSanitizedUpload()"
-            style="padding:.52rem 1.25rem; font-size:.875rem; border-radius:8px; display:inline-flex; align-items:center; gap:.5rem; background:#16a34a; color:#fff; cursor:pointer; transition:all .2s;">
-            <i class="fa-solid fa-cloud-arrow-up" id="btn-submit-icon"></i>
-            <span id="btn-submit-text">Upload &amp; Lock File</span>
+        <button id="btn-submit-locked" class="btn-filter" onclick="commitSanitizedUpload()" disabled
+            style="padding:.52rem 1.25rem; font-size:.875rem; border-radius:8px; display:inline-flex; align-items:center; gap:.5rem; background:#94a3b8; color:#fff; cursor:not-allowed; opacity:0.5; transition:all .2s;"
+            title="Loading draft records...">
+            <i class="fa-solid fa-lock" id="btn-submit-icon"></i>
+            <span id="btn-submit-text">Upload &amp; Lock File (Loading...)</span>
         </button>
     </div>
 
@@ -662,15 +663,7 @@ require_once 'includes/layout.php';
 
     /* ─── Owner Permissions ────────────────────────────────── */
     function applyOwnerPermissions() {
-        const btn = document.getElementById('btn-submit-locked');
-        if (!btn) return;
-        btn.disabled = false;
-        btn.style.opacity = '1';
-        btn.style.cursor = 'pointer';
-        btn.style.background = '#16a34a';
-        btn.style.color = '#fff';
-        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Upload &amp; Lock File';
-        btn.title = '';
+        updateOptimisticSummary();
     }
 
     /* ─── Open existing draft ──────────────────────────────── */
@@ -1904,6 +1897,67 @@ require_once 'includes/layout.php';
             btnDeleteDb.style.opacity = (cachedDbDupCount === 0) ? '0.45' : '1';
             btnDeleteDb.style.cursor = (cachedDbDupCount === 0) ? 'not-allowed' : 'pointer';
         }
+
+        // Strict Submit & Lock File Button State (Must be 100% clean and draft owner)
+        const submitBtn = document.getElementById('btn-submit-locked');
+        const submitIcon = document.getElementById('btn-submit-icon');
+        const submitLbl = document.getElementById('btn-submit-text');
+
+        const hasCritical = (critical > 0);
+        const effectiveDups = Math.max(dupCount, (cachedInFileDupCount || 0) + (cachedDbDupCount || 0));
+        const hasDuplicates = (effectiveDups > 0);
+        // Warnings are informational and do NOT block submission — only critical errors and duplicates do
+        const isReadyToSubmit = (total > 0 && !hasCritical && !hasDuplicates);
+
+        if (submitBtn) {
+            if (!isDraftOwner) {
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = '0.45';
+                submitBtn.style.cursor = 'not-allowed';
+                submitBtn.style.background = '#94a3b8';
+                submitBtn.style.color = '#ffffff';
+                if (submitIcon) submitIcon.className = 'fa-solid fa-lock';
+                if (submitLbl) submitLbl.textContent = `Read-Only (Draft Owner: ${draftOwnerName || 'Officer'})`;
+                submitBtn.title = 'Only the draft creator is authorized to submit and lock this file.';
+            } else if (!isReadyToSubmit) {
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = '0.5';
+                submitBtn.style.cursor = 'not-allowed';
+                submitBtn.style.background = '#94a3b8';
+                submitBtn.style.color = '#ffffff';
+                if (submitIcon) submitIcon.className = 'fa-solid fa-lock';
+
+                const pendingIssues = [];
+                if (critical > 0) pendingIssues.push(`${critical.toLocaleString()} Error(s)`);
+                if (effectiveDups > 0) pendingIssues.push(`${effectiveDups.toLocaleString()} Duplicate(s)`);
+
+                if (submitLbl) {
+                    if (total === 0) {
+                        submitLbl.textContent = 'Upload & Lock File (No Records)';
+                    } else if (pendingIssues.length > 0) {
+                        submitLbl.textContent = `Upload & Lock File (${pendingIssues.join(', ')} Pending)`;
+                    } else {
+                        submitLbl.textContent = 'Upload & Lock File (Pending Issues)';
+                    }
+                }
+                submitBtn.title = 'Cannot submit: Please resolve all critical errors and duplicates first.';
+            } else {
+                submitBtn.disabled = false;
+                submitBtn.style.opacity = '1';
+                submitBtn.style.cursor = 'pointer';
+                submitBtn.style.background = '#16a34a';
+                submitBtn.style.color = '#ffffff';
+                if (submitIcon) submitIcon.className = 'fa-solid fa-cloud-arrow-up';
+                if (submitLbl) {
+                    submitLbl.textContent = warnings > 0
+                        ? `Upload & Lock File (${warnings.toLocaleString()} Warning${warnings === 1 ? '' : 's'})`
+                        : 'Upload & Lock File';
+                }
+                submitBtn.title = warnings > 0
+                    ? `Ready to submit — ${warnings.toLocaleString()} warning(s) noted but do not block submission.`
+                    : 'All records are clean! Click to upload and lock file.';
+            }
+        }
     }
 
     /* ─── Leave 1 Duplicate in Same File (Instant Disappearance) ── */
@@ -2228,27 +2282,15 @@ require_once 'includes/layout.php';
 
     /* ─── Summary cards ────────────────────────────────────── */
     function updateSummaryCards(s) {
-        document.getElementById('summary-total').textContent = (s.total || 0).toLocaleString();
-        document.getElementById('summary-clean').textContent = (s.clean || 0).toLocaleString();
-        document.getElementById('summary-critical').textContent = (s.critical || 0).toLocaleString();
-        document.getElementById('summary-warnings').textContent = (s.warnings || 0).toLocaleString();
-
-        const dups = (s.in_file_duplicates || 0) + (s.db_duplicates || 0);
-        document.getElementById('summary-duplicates').textContent = dups.toLocaleString();
-
-        const btn = document.getElementById('btn-submit-locked');
-        const icon = document.getElementById('btn-submit-icon');
-        const lbl = document.getElementById('btn-submit-text');
-        // TEMPORARY OVERRIDE: Allow upload & lock even with errors for historical data import
-        btn.disabled = false;
-        btn.style.opacity = '1';
-        btn.style.cursor = 'pointer';
-        btn.style.background = '#16a34a';
-        btn.style.color = '#fff';
-        icon.className = 'fa-solid fa-cloud-arrow-up';
-        lbl.textContent = (s.critical > 0)
-            ? `Upload & Lock File (${s.critical.toLocaleString()} Errors Bypassed)`
-            : 'Upload & Lock File';
+        if (s) {
+            if (document.getElementById('summary-total')) document.getElementById('summary-total').textContent = (s.total || 0).toLocaleString();
+            if (document.getElementById('summary-clean')) document.getElementById('summary-clean').textContent = (s.clean || 0).toLocaleString();
+            if (document.getElementById('summary-critical')) document.getElementById('summary-critical').textContent = (s.critical || 0).toLocaleString();
+            if (document.getElementById('summary-warnings')) document.getElementById('summary-warnings').textContent = (s.warnings || 0).toLocaleString();
+            const dups = (s.in_file_duplicates || 0) + (s.db_duplicates || 0);
+            if (document.getElementById('summary-duplicates')) document.getElementById('summary-duplicates').textContent = dups.toLocaleString();
+        }
+        updateOptimisticSummary();
     }
 
     /* ─── Export ───────────────────────────────────────────── */
@@ -2353,6 +2395,35 @@ require_once 'includes/layout.php';
 
     /* ─── Commit ───────────────────────────────────────────── */
     async function commitSanitizedUpload() {
+        // Strict cleanliness verification before commit
+        // Warnings are informational and do NOT block submission
+        let critCount = 0;
+        for (let i = 0; i < gridRows.length; i++) {
+            const r = gridRows[i];
+            if (r.has_critical || (r.errors && Object.keys(r.errors).length > 0)) critCount++;
+        }
+        const effectiveDups = Math.max(
+            (cachedInFileDupCount || 0) + (cachedDbDupCount || 0),
+            latestDuplicateDetails ? latestDuplicateDetails.length : 0
+        );
+
+        if (gridRows.length === 0) {
+            alert('Cannot submit an empty draft. Please ensure data is loaded.');
+            return;
+        }
+        if (!isDraftOwner) {
+            alert(`Only the owner of this draft (${draftOwnerName || 'the original uploader'}) is authorized to upload and lock this file.`);
+            return;
+        }
+        if (critCount > 0 || effectiveDups > 0) {
+            alert(`Cannot upload and lock file:\n\nThere are still blocking issues in this file:\n` +
+                  `\u2022 Critical Errors: ${critCount.toLocaleString()}\n` +
+                  `\u2022 Duplicates: ${effectiveDups.toLocaleString()}\n\n` +
+                  `Please resolve all critical errors and duplicates before submitting.\n(Warnings are informational and do not block submission.)`);
+            updateOptimisticSummary();
+            return;
+        }
+
         // 1. Immediately blur active elements so cell content cannot be modified
         if (document.activeElement && typeof document.activeElement.blur === 'function') {
             document.activeElement.blur();

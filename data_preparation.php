@@ -322,117 +322,158 @@ require_once 'includes/layout.php';
                 </div>`;
         }
 
+        function resetDropzone() {
+            window.removeEventListener('beforeunload', beforeUnloadHandler);
+            if (modal) modal.style.display = 'none';
+            if (modalBar) modalBar.style.width = '0%';
+            if (modalStatus) modalStatus.textContent = '';
+            if (modalDetail) modalDetail.textContent = '';
+            const fileInput = document.getElementById('sanitizer-file-input');
+            if (fileInput) fileInput.value = '';
+            if (dz) {
+                dz.style.pointerEvents = 'auto';
+                dz.innerHTML = `
+                    <div style="display:flex; flex-direction:column; align-items:center; pointer-events:none;">
+                        <div style="width:68px; height:68px; background:#fef2f2; border:1px solid #fca5a5; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--airtel-red); font-size:1.9rem; margin-bottom:1rem; box-shadow:0 4px 12px rgba(220,38,38,0.12);">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        </div>
+                        <p style="font-size:1.05rem; font-weight:800; color:var(--text-primary); margin-bottom:.35rem;">Drag &amp; Drop Excel File Here</p>
+                        <p style="font-size:.875rem; color:var(--text-secondary); margin-bottom:.75rem;">or <span style="color:var(--airtel-red); font-weight:700; text-decoration:underline;">click to browse computer</span></p>
+                        <span style="font-size:.78rem; color:#64748b; background:#f8fafc; padding:.35rem 1rem; border-radius:20px; border:1px solid #e2e8f0;">
+                            Supports .xlsx · .xls · .csv &nbsp;—&nbsp; Max 500,000 records per batch &nbsp;—&nbsp; Single worksheet format
+                        </span>
+                    </div>`;
+            }
+        }
+
         const reader = new FileReader();
         reader.onload = async e => {
-            try {
-                if (modalBar) modalBar.style.width = '10%';
-                if (modalStatus) modalStatus.textContent = 'Parsing worksheet…';
+            // Give UI a moment to show modal before heavy parsing begins
+            setTimeout(async () => {
+                try {
+                    if (modalBar) modalBar.style.width = '10%';
+                    if (modalStatus) modalStatus.textContent = 'Parsing worksheet…';
 
-                const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: false });
-                const ws = wb.Sheets[wb.SheetNames[0]];
-                // raw: false ensures formatted text (cell.w) is preserved (e.g. leading zeros like 0712345678, exact date strings)
-                const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
-                if (!raw || raw.length < 2) { 
-                    window.removeEventListener('beforeunload', beforeUnloadHandler);
-                    if (modal) modal.style.display = 'none';
-                    alert('No data rows found in uploaded file.'); 
-                    return; 
-                }
-
-                const hdrs = raw[0].map(h => String(h).trim().toLowerCase());
-                const col = {
-                    owner_name: colIdx(hdrs, ['owner_name', 'holder_name', 'customer_name', 'full_name', 'owner', 'name', 'holder']),
-                    id_passport_no: colIdx(hdrs, ['passport', 'id_number', 'id_no', 'national_id', 'id_num', 'id']),
-                    date_of_birth: colIdx(hdrs, ['date_of_birth', 'birth_date', 'dob', 'birth']),
-                    account_number: colIdx(hdrs, ['account_number', 'account_no', 'acc_no', 'account', 'acct']),
-                    last_transaction: colIdx(hdrs, ['last_transaction', 'transaction_date', 'last_tx_date', 'last_tx', 'transaction']),
-                    due_amount: colIdx(hdrs, ['due_amount', 'amount_due', 'amount', 'due', 'kes', 'balance', 'value']),
-                    compilation_date: colIdx(hdrs, ['compilation_date', 'compiled_date', 'compilation', 'compiled', 'date_compiled'])
-                };
-
-                let parsedRows = [];
-                for (let i = 1; i < raw.length; i++) {
-                    const r = raw[i];
-                    if (!r || r.every(c => String(c).trim() === '')) continue;
-                    // Keep exact raw text as uploaded - do not modify or format anything yet
-                    parsedRows.push({
-                        owner_name:       rawVal(col.owner_name >= 0 ? r[col.owner_name] : r[0]),
-                        id_passport_no:   rawVal(col.id_passport_no >= 0 ? r[col.id_passport_no] : r[1]),
-                        date_of_birth:    rawVal(col.date_of_birth >= 0 ? r[col.date_of_birth] : r[2]),
-                        account_number:   rawVal(col.account_number >= 0 ? r[col.account_number] : r[3]),
-                        last_transaction: rawVal(col.last_transaction >= 0 ? r[col.last_transaction] : r[4]),
-                        due_amount:       rawVal(col.due_amount >= 0 ? r[col.due_amount] : r[5]),
-                        compilation_date: rawVal(col.compilation_date >= 0 ? r[col.compilation_date] : r[6])
-                    });
-                }
-
-                // Enforce 500,000 maximum row limit: Do NOT auto-truncate; let user do it themselves
-                if (parsedRows.length > 500000) {
-                    window.removeEventListener('beforeunload', beforeUnloadHandler);
-                    if (modal) modal.style.display = 'none';
-                    alert(`The uploaded file contains ${parsedRows.length.toLocaleString()} rows, which exceeds the 500,000 row maximum limit.\n\nPlease upload the first 500,000 rows (split the file and upload up to 500,000 rows yourself).`);
-                    const fileInput = document.getElementById('sanitizer-file-input');
-                    if (fileInput) fileInput.value = '';
-                    return;
-                }
-
-                const totalRows = parsedRows.length;
-                const CHUNK_SIZE = 15000;
-                const totalChunks = Math.ceil(totalRows / CHUNK_SIZE);
-                let draftId = 0;
-
-                const progressEl = document.getElementById('upload-progress-text');
-
-                for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
-                    const start = chunkIdx * CHUNK_SIZE;
-                    const end = Math.min(totalRows, start + CHUNK_SIZE);
-                    const chunkRows = parsedRows.slice(start, end);
-
-                    const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100);
-                    const statusMsg = `Uploading chunk ${chunkIdx + 1} of ${totalChunks} (${pct}%)…`;
-                    const detailMsg = `${end.toLocaleString()} / ${totalRows.toLocaleString()} rows transferred`;
-
-                    if (progressEl) {
-                        progressEl.textContent = `${statusMsg} ${detailMsg}`;
-                    }
-                    if (modalBar) modalBar.style.width = pct + '%';
-                    if (modalStatus) modalStatus.textContent = statusMsg;
-                    if (modalDetail) modalDetail.textContent = detailMsg;
-
-                    const res = await fetch('ajax/sandbox_draft_api.php?action=save_chunk', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            draft_id: draftId,
-                            draft_name: file.name,
-                            chunk_index: chunkIdx,
-                            total_chunks: totalChunks,
-                            rows: chunkRows
-                        })
-                    });
-
-                    const data = await res.json();
-                    if (data.status !== 'chunk_saved' && data.status !== 'success') {
-                        throw new Error(data.message || 'Error saving upload chunk.');
-                    }
-
-                    draftId = data.draft_id;
-
-                    if (data.is_final) {
-                        if (progressEl) progressEl.textContent = 'Launching Web-Excel Editor…';
-                        if (modalStatus) modalStatus.textContent = 'Upload complete! Launching Web-Excel Editor…';
-                        if (modalBar) modalBar.style.width = '100%';
-                        window.removeEventListener('beforeunload', beforeUnloadHandler);
-                        window.location.href = `data_sanitizer_editor.php?draft_id=${draftId}`;
+                    const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: false });
+                    const ws = wb.Sheets[wb.SheetNames[0]];
+                    if (!ws) {
+                        resetDropzone();
+                        setTimeout(() => { alert('No worksheet found in uploaded file.'); }, 20);
                         return;
                     }
+
+                    // 1. FAST RANGE CHECK (0ms - avoids browser freezing on massive files before sheet_to_json)
+                    if (ws['!ref']) {
+                        const range = XLSX.utils.decode_range(ws['!ref']);
+                        const approxRowCount = range.e.r - range.s.r;
+                        if (approxRowCount > 500000) {
+                            resetDropzone();
+                            setTimeout(() => {
+                                alert(`The uploaded file contains ${approxRowCount.toLocaleString()} rows, which exceeds the 500,000 row maximum limit.\n\nPlease upload the first 500,000 rows (split the file and upload up to 500,000 rows yourself).`);
+                            }, 20);
+                            return;
+                        }
+                    }
+
+                    // raw: false ensures formatted text (cell.w) is preserved (e.g. leading zeros like 0712345678, exact date strings)
+                    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+                    if (!raw || raw.length < 2) { 
+                        resetDropzone();
+                        setTimeout(() => { alert('No data rows found in uploaded file.'); }, 20);
+                        return; 
+                    }
+
+                    const hdrs = raw[0].map(h => String(h).trim().toLowerCase());
+                    const col = {
+                        owner_name: colIdx(hdrs, ['owner_name', 'holder_name', 'customer_name', 'full_name', 'owner', 'name', 'holder']),
+                        id_passport_no: colIdx(hdrs, ['passport', 'id_number', 'id_no', 'national_id', 'id_num', 'id']),
+                        date_of_birth: colIdx(hdrs, ['date_of_birth', 'birth_date', 'dob', 'birth']),
+                        account_number: colIdx(hdrs, ['account_number', 'account_no', 'acc_no', 'account', 'acct']),
+                        last_transaction: colIdx(hdrs, ['last_transaction', 'transaction_date', 'last_tx_date', 'last_tx', 'transaction']),
+                        due_amount: colIdx(hdrs, ['due_amount', 'amount_due', 'amount', 'due', 'kes', 'balance', 'value']),
+                        compilation_date: colIdx(hdrs, ['compilation_date', 'compiled_date', 'compilation', 'compiled', 'date_compiled'])
+                    };
+
+                    let parsedRows = [];
+                    for (let i = 1; i < raw.length; i++) {
+                        const r = raw[i];
+                        if (!r || r.every(c => String(c).trim() === '')) continue;
+                        parsedRows.push({
+                            owner_name:       rawVal(col.owner_name >= 0 ? r[col.owner_name] : r[0]),
+                            id_passport_no:   rawVal(col.id_passport_no >= 0 ? r[col.id_passport_no] : r[1]),
+                            date_of_birth:    rawVal(col.date_of_birth >= 0 ? r[col.date_of_birth] : r[2]),
+                            account_number:   rawVal(col.account_number >= 0 ? r[col.account_number] : r[3]),
+                            last_transaction: rawVal(col.last_transaction >= 0 ? r[col.last_transaction] : r[4]),
+                            due_amount:       rawVal(col.due_amount >= 0 ? r[col.due_amount] : r[5]),
+                            compilation_date: rawVal(col.compilation_date >= 0 ? r[col.compilation_date] : r[6])
+                        });
+                    }
+
+                    // 2. Strict secondary check on actual parsed data rows
+                    if (parsedRows.length > 500000) {
+                        resetDropzone();
+                        setTimeout(() => {
+                            alert(`The uploaded file contains ${parsedRows.length.toLocaleString()} rows, which exceeds the 500,000 row maximum limit.\n\nPlease upload the first 500,000 rows (split the file and upload up to 500,000 rows yourself).`);
+                        }, 20);
+                        return;
+                    }
+
+                    const totalRows = parsedRows.length;
+                    const CHUNK_SIZE = 15000;
+                    const totalChunks = Math.ceil(totalRows / CHUNK_SIZE);
+                    let draftId = 0;
+
+                    const progressEl = document.getElementById('upload-progress-text');
+
+                    for (let chunkIdx = 0; chunkIdx < totalChunks; chunkIdx++) {
+                        const start = chunkIdx * CHUNK_SIZE;
+                        const end = Math.min(totalRows, start + CHUNK_SIZE);
+                        const chunkRows = parsedRows.slice(start, end);
+
+                        const pct = Math.round(((chunkIdx + 1) / totalChunks) * 100);
+                        const statusMsg = `Uploading chunk ${chunkIdx + 1} of ${totalChunks} (${pct}%)…`;
+                        const detailMsg = `${end.toLocaleString()} / ${totalRows.toLocaleString()} rows transferred`;
+
+                        if (progressEl) {
+                            progressEl.textContent = `${statusMsg} ${detailMsg}`;
+                        }
+                        if (modalBar) modalBar.style.width = pct + '%';
+                        if (modalStatus) modalStatus.textContent = statusMsg;
+                        if (modalDetail) modalDetail.textContent = detailMsg;
+
+                        const res = await fetch('ajax/sandbox_draft_api.php?action=save_chunk', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                draft_id: draftId,
+                                draft_name: file.name,
+                                chunk_index: chunkIdx,
+                                total_chunks: totalChunks,
+                                rows: chunkRows
+                            })
+                        });
+
+                        const data = await res.json();
+                        if (data.status !== 'chunk_saved' && data.status !== 'success') {
+                            throw new Error(data.message || 'Error saving upload chunk.');
+                        }
+
+                        draftId = data.draft_id;
+
+                        if (data.is_final) {
+                            if (progressEl) progressEl.textContent = 'Launching Web-Excel Editor…';
+                            if (modalStatus) modalStatus.textContent = 'Upload complete! Launching Web-Excel Editor…';
+                            if (modalBar) modalBar.style.width = '100%';
+                            window.removeEventListener('beforeunload', beforeUnloadHandler);
+                            window.location.href = `data_sanitizer_editor.php?draft_id=${draftId}`;
+                            return;
+                        }
+                    }
+                } catch (err) {
+                    resetDropzone();
+                    setTimeout(() => { alert('File processing error: ' + err.message); }, 20);
                 }
-            } catch (err) {
-                window.removeEventListener('beforeunload', beforeUnloadHandler);
-                if (modal) modal.style.display = 'none';
-                alert('File processing error: ' + err.message);
-                window.location.reload();
-            }
+            }, 30);
         };
         reader.readAsArrayBuffer(file);
     }
