@@ -69,6 +69,10 @@ if ($draftId > 0) {
             exit;
         }
     }
+
+    // Immediately lock the draft in database so no concurrent edits can occur while uploading
+    $lockDraftStmt = $pdo->prepare("UPDATE `sandbox_drafts` SET `status` = 'submitted', `last_edited_by` = ?, `updated_at` = NOW() WHERE `id` = ?");
+    $lockDraftStmt->execute([$uploadedBy, $draftId]);
 }
 
 // Generate dynamic password: UFAA-AIRTEL-XXXXXX

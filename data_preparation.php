@@ -366,10 +366,14 @@ require_once 'includes/layout.php';
                     });
                 }
 
-                // Enforce 500,000 maximum row limit as requested
+                // Enforce 500,000 maximum row limit: Do NOT auto-truncate; let user do it themselves
                 if (parsedRows.length > 500000) {
-                    alert(`Notice: The uploaded file contains ${parsedRows.length.toLocaleString()} rows.\n\nTo prevent browser memory freezes and ensure smooth performance, each upload batch is capped at 500,000 records. The first 500,000 rows have been loaded into this working draft.\n\nSubsequent records can be uploaded in a separate batch and merged for final UFAA submission.`);
-                    parsedRows = parsedRows.slice(0, 500000);
+                    window.removeEventListener('beforeunload', beforeUnloadHandler);
+                    if (modal) modal.style.display = 'none';
+                    alert(`The uploaded file contains ${parsedRows.length.toLocaleString()} rows, which exceeds the 500,000 row maximum limit.\n\nPlease upload the first 500,000 rows (split the file and upload up to 500,000 rows yourself).`);
+                    const fileInput = document.getElementById('sanitizer-file-input');
+                    if (fileInput) fileInput.value = '';
+                    return;
                 }
 
                 const totalRows = parsedRows.length;

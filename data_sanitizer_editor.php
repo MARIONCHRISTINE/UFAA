@@ -518,6 +518,32 @@ require_once 'includes/layout.php';
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
+     BLOCKING OVERLAY (Locks Workspace During Upload & Lock)
+══════════════════════════════════════════════════════════ -->
+<div id="commit-blocking-overlay"
+    style="display:none; position:fixed; inset:0; z-index:999999; background:rgba(15, 23, 42, 0.82); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); align-items:center; justify-content:center; padding:1.5rem;">
+    <div style="background:#fff; border-radius:18px; padding:2.5rem 2rem; max-width:490px; width:100%; text-align:center; box-shadow:0 25px 60px rgba(0,0,0,0.4); border:1px solid #e2e8f0;">
+        <div style="width:76px; height:76px; margin:0 auto 1.25rem; background:#ecfdf5; border:2.5px solid #16a34a; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#16a34a; font-size:2.2rem; box-shadow:0 8px 24px rgba(22,163,74,0.22);">
+            <i class="fa-solid fa-lock fa-bounce"></i>
+        </div>
+        <h3 style="font-size:1.35rem; font-weight:800; color:#0f172a; margin:0 0 .4rem;">Submitting &amp; Locking File…</h3>
+        <p style="font-size:.9rem; font-weight:600; color:#475569; margin:0 0 1.25rem; line-height:1.45;">
+            Importing sanitized compliance records into the database and generating the protected submission file.
+        </p>
+
+        <!-- Animated Progress Indicator -->
+        <div style="background:#f1f5f9; border-radius:12px; height:10px; overflow:hidden; width:100%; margin-bottom:1.15rem; border:1px solid #e2e8f0;">
+            <div style="background:linear-gradient(90deg, #16a34a, #22c55e, #16a34a); width:100%; height:100%; border-radius:12px; animation:pulse 1.5s infinite;"></div>
+        </div>
+
+        <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:.75rem 1rem; font-size:.82rem; color:#92400e; display:flex; align-items:center; gap:.65rem; text-align:left;">
+            <i class="fa-solid fa-shield-halved" style="font-size:1.25rem; flex-shrink:0; color:#d97706;"></i>
+            <span><strong>Editing is strictly locked:</strong> All cells, buttons, and tools are frozen to guarantee data integrity while upload finishes. Please do not refresh or close this tab.</span>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
      SUCCESS MODAL
 ══════════════════════════════════════════════════════════ -->
 <div id="commit-success-modal"
@@ -699,6 +725,7 @@ require_once 'includes/layout.php';
 
             applyOwnerPermissions();
             rebuildDuplicateIndex();
+            updateOptimisticSummary();
             renderGridTable();
             validateGrid();
             startHeartbeat();
@@ -1518,6 +1545,8 @@ require_once 'includes/layout.php';
             renderPresenceOverlay(activePresence);
         } catch (err) {
             console.error('validateGrid error:', err);
+            rebuildDuplicateIndex();
+            updateOptimisticSummary();
         } finally {
             isValidating = false;
             if (ind) ind.textContent = 'Live Validation Active';
@@ -2324,10 +2353,29 @@ require_once 'includes/layout.php';
 
     /* ─── Commit ───────────────────────────────────────────── */
     async function commitSanitizedUpload() {
+        // 1. Immediately blur active elements so cell content cannot be modified
+        if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
+        }
+
+        // 2. Lock UI with full-screen blocking overlay
+        const blockingOverlay = document.getElementById('commit-blocking-overlay');
+        if (blockingOverlay) blockingOverlay.style.display = 'flex';
+
+        // 3. Freeze table and action buttons
+        const tableWrap = document.getElementById('table-scroll-wrap');
+        if (tableWrap) tableWrap.style.pointerEvents = 'none';
 
         const btn = document.getElementById('btn-submit-locked');
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving to database…';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Uploading &amp; Locking File…';
+        }
+
+        // 4. Stop sync timers so no background polling interferes
+        clearInterval(pollTimer);
+        clearInterval(heartbeatTimer);
+
         try {
             const res = await fetch('ajax/commit_pre_submission.php', {
                 method: 'POST',
@@ -2343,6 +2391,8 @@ require_once 'includes/layout.php';
             }
             if (data.status !== 'success') throw new Error(data.message || 'Submission failed');
 
+            if (blockingOverlay) blockingOverlay.style.display = 'none';
+
             document.getElementById('success-modal-msg').textContent = data.message || 'Submission completed.';
 
             const dlBtn = document.getElementById('btn-modal-download');
@@ -2356,9 +2406,13 @@ require_once 'includes/layout.php';
             }
 
             document.getElementById('commit-success-modal').style.display = 'flex';
-        } catch (err) { alert('Error: ' + err.message); }
-        finally {
+        } catch (err) {
+            if (blockingOverlay) blockingOverlay.style.display = 'none';
+            if (tableWrap) tableWrap.style.pointerEvents = 'auto';
+            alert('Error: ' + err.message);
             applyOwnerPermissions();
+            startHeartbeat();
+            startLiveSync();
         }
     }
 
@@ -2395,12 +2449,42 @@ require_once 'includes/layout.php';
     function txt(v) { return String(v ?? '').trim(); }
     function fmtDate(v) { if (!v) return ''; if (v instanceof Date) return v.toISOString().split('T')[0]; return txt(v); }
     function cleanRawRows(rows) {
-        return rows.map(r => ({
-            owner_name: txt(r.owner_name), id_passport_no: txt(r.id_passport_no),
-            date_of_birth: txt(r.date_of_birth), account_number: txt(r.account_number),
-            last_transaction: txt(r.last_transaction), due_amount: txt(r.due_amount),
-            compilation_date: txt(r.compilation_date)
-        }));
+        return rows.map(r => {
+            const owner = txt(r.owner_name);
+            const idPass = txt(r.id_passport_no);
+            const dob = txt(r.date_of_birth);
+            const acct = txt(r.account_number);
+            const tx = txt(r.last_transaction);
+            const amt = txt(r.due_amount);
+            const comp = txt(r.compilation_date);
+
+            const err = (r.errors && typeof r.errors === 'object') ? { ...r.errors } : {};
+            const warn = (r.warnings && typeof r.warnings === 'object') ? { ...r.warnings } : {};
+
+            if (!owner && !err.owner_name) err.owner_name = 'Owner Name is required';
+            if (!acct && !err.account_number) err.account_number = 'Account Number is required';
+            if (!amt && !err.due_amount) err.due_amount = 'Due Amount is required';
+            if (!comp && !err.compilation_date) err.compilation_date = 'Compilation Date is required';
+            if (!dob && !err.date_of_birth) err.date_of_birth = 'Date of Birth is required';
+            if (!tx && !err.last_transaction) err.last_transaction = 'Last Transaction is required';
+
+            const hasCrit = Object.keys(err).length > 0;
+            const hasWarn = Object.keys(warn).length > 0;
+
+            return {
+                owner_name: owner,
+                id_passport_no: idPass,
+                date_of_birth: dob,
+                account_number: acct,
+                last_transaction: tx,
+                due_amount: amt,
+                compilation_date: comp,
+                errors: err,
+                warnings: warn,
+                has_critical: hasCrit,
+                is_clean: !hasCrit && !hasWarn
+            };
+        });
     }
     function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
     function escAttr(s) { return escHtml(s).replace(/"/g, '&quot;'); }
